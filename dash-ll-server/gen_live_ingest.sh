@@ -31,12 +31,17 @@ echo ${FF} -h all | grep ldash
 
 PROFILE_FAST="-b:v:0 100K -s:v:0 640x360 -b:v:1 300K -s:v:1 852x480 -map 0:v:0 -map 0:v:0 -adaptation_sets id=0,seg_duration=0.5,streams=0,1"
 PROFILE_NORMAL="-b:v:0 200K -s:v:0 640x360 -b:v:1 600K -s:v:1 852x480 -b:v:2 1000K -s:v:2 1280x720 -map 0:v:0 -map 0:v:0 -map 0:v:0 -adaptation_sets id=0,seg_duration=0.5,streams=0,1,2"
+PROFILE_CUSTOM="-b:v:0 200K -s:v:0 640x360 -b:v:1 600K -s:v:1 852x480 -b:v:2 1000K -s:v:2 1280x720 -map 0:v:0 -map 0:v:0 -map 0:v:0 -adaptation_sets id=0,seg_duration=0.5,streams=0,1,2"
 
 LADDER_PROFILE=""
 if [ "$PROFILE" == "PROFILE_FAST" ]
 then
     LADDER_PROFILE=$PROFILE_FAST
     echo "Using fast ffmpeg profile (360p@100K, 480p@300K)"
+elif [ "$PROFILE" == "PROFILE_CUSTOM" ]
+then
+    LADDER_PROFILE=$PROFILE_CUSTOM
+    echo "Using custom ffmpeg profile"
 else
     LADDER_PROFILE=$PROFILE_NORMAL
     echo "Using normal ffmpeg profile (360p@200K, 480p@600K, 720p@1000K)"

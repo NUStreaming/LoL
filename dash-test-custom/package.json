@@ -1,0 +1,16 @@
+{
+  "name": "dash-test-custom",
+  "version": "1.0.0",
+  "description": "Custom addition to do comprehensive testing for ABR algorithm",
+  "dependencies": {
+    "puppeteer": "^2.1.1",
+    "puppeteer-core": "^2.1.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "bash ./../dash-ll-server/run_gen.sh ${PROFILE} $npm_config_profile & node run.js ${PROFILE}",
+    "test:fast": "env PROFILE=PROFILE_FAST npm run --silent test",
+    "test:normal": "env PROFILE=PROFILE_NORMAL npm run --silent test",
+    "test:custom": "env PROFILE=PROFILE_CUSTOM npm run --silent test"
+  }
+}

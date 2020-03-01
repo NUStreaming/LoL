@@ -291,6 +291,7 @@ function FragmentModel(config) {
 
         addSchedulingInfoMetrics(e.request, e.error ? FRAGMENT_MODEL_FAILED : FRAGMENT_MODEL_EXECUTED);
 
+        // may.lim: FRAGMENT_LOADING_COMPLETED event obj is created here
         eventBus.trigger(Events.FRAGMENT_LOADING_COMPLETED, {
             request: e.request,
             response: e.response,

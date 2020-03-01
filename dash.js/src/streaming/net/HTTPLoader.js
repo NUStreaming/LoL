@@ -97,6 +97,9 @@ function HTTPLoader(cfg) {
             request.firstByteDate = request.firstByteDate || requestStartTime;
 
             if (!request.checkExistenceOnly) {
+                // may.lim: adding more data to request obj for logging
+                if (httpRequest.response)   request.responseHeaders = httpRequest.response.responseHeaders;
+
                 dashMetrics.addHttpRequest(request, httpRequest.response ? httpRequest.response.responseURL : null,
                                            httpRequest.response ? httpRequest.response.status : null,
                                            httpRequest.response && httpRequest.response.getAllResponseHeaders ? httpRequest.response.getAllResponseHeaders() :
