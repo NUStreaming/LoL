@@ -296,10 +296,17 @@
                     }
                 }
 
+                // get and add throughput info
+                const streamInfo = player.getActiveStream().getStreamInfo()
+                const isDynamic = streamInfo && streamInfo.manifestInfo ? streamInfo.manifestInfo.isDynamic : null;
+                const throughput = Math.round(player.getSafeAverageThroughput('video', isDynamic));
+                currentMetrics.throughputKbps = throughput;
+                console.log('-- player.getSafeAverageThroughput(): ' + throughput + 'kbps');
+
                 // add current time
-                // currentMetrics.downloadTimeAbsolute = Math.floor(Date.now() / 1000);
-                currentMetrics.downloadTimeAbsolute = Date.now() / 1000;    // retain milliseconds
-                currentMetrics.downloadTimeRelative = video.currentTime;
+                // currentMetrics.currentTimeAbsolute = Math.floor(Date.now() / 1000);
+                currentMetrics.currentTimeAbsolute = Date.now() / 1000;    // retain milliseconds
+                currentMetrics.currentTimeRelative = video.currentTime;
 
                 // add other request/response-related info
                 currentMetrics.requestInfo = {

@@ -995,6 +995,12 @@ function MediaPlayer() {
         return throughputHistory ? throughputHistory.getAverageThroughput(type) : 0;
     }
 
+    // may.lim: for client to obtain throughput value used in ThroughputRule / TGCRule
+    function getSafeAverageThroughput(mediaType, isDynamic) {
+        const throughputHistory = abrController.getThroughputHistory();
+        return throughputHistory.getSafeAverageThroughput(mediaType, isDynamic);
+    }
+
     /**
      * Sets whether withCredentials on XHR requests for a particular request
      * type is true or false
@@ -2091,6 +2097,7 @@ function MediaPlayer() {
         removeABRCustomRule: removeABRCustomRule,
         removeAllABRCustomRule: removeAllABRCustomRule,
         getAverageThroughput: getAverageThroughput,
+        getSafeAverageThroughput: getSafeAverageThroughput,
         retrieveManifest: retrieveManifest,
         addUTCTimingSource: addUTCTimingSource,
         removeUTCTimingSource: removeUTCTimingSource,

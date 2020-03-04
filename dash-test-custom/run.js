@@ -33,6 +33,9 @@ run()
       console.log('> ' + filenameByDownload);
       console.log('> ' + filenameOverall);
     }
+    else {
+      console.log('Unable to generate test results, likely some error occurred.. Please check program output above.')
+    }
   })
   .catch(error => console.log(error));
 
