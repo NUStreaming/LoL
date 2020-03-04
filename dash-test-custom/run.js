@@ -9,28 +9,30 @@ const PROFILE = process.env.PROFILE;
 
 run()
   .then((result) => {
-    console.log("Test finished. Press cmd+c to exit.");
-    if (!fs.existsSync('./results')){
-      fs.mkdirSync('./results');
+    if (result) {
+      console.log("Test finished. Press cmd+c to exit.");
+      if (!fs.existsSync('./results')){
+        fs.mkdirSync('./results');
+      }
+
+      let timestamp = Math.floor(Date.now() / 1000);
+      let folder = './results/' + timestamp;
+      if (!fs.existsSync(folder)){
+        fs.mkdirSync(folder);
+      }
+
+      let filenameNetworkPattern = folder + '/network-pattern.json';
+      let filenameByDownload = folder + '/metrics-by-download.json';
+      let filenameOverall = folder + '/metrics-overall.json';
+    
+      fs.writeFileSync(filenameNetworkPattern, JSON.stringify(result.networkPattern));
+      fs.writeFileSync(filenameByDownload, JSON.stringify(result.byDownload));
+      fs.writeFileSync(filenameOverall, JSON.stringify(result.overall));
+
+      console.log('Results files generated:');
+      console.log('> ' + filenameByDownload);
+      console.log('> ' + filenameOverall);
     }
-
-    let timestamp = Math.floor(Date.now() / 1000);
-    let folder = './results/' + timestamp;
-    if (!fs.existsSync(folder)){
-      fs.mkdirSync(folder);
-    }
-
-    let filenameNetworkPattern = folder + '/network-pattern.json';
-    let filenameByDownload = folder + '/metrics-by-download.json';
-    let filenameOverall = folder + '/metrics-overall.json';
-
-    fs.writeFileSync(filenameNetworkPattern, JSON.stringify(result.networkPattern));
-    fs.writeFileSync(filenameByDownload, JSON.stringify(result.byDownload));
-    fs.writeFileSync(filenameOverall, JSON.stringify(result.overall));
-
-    console.log('Results files generated:');
-    console.log('> ' + filenameByDownload);
-    console.log('> ' + filenameOverall);
   })
   .catch(error => console.log(error));
 

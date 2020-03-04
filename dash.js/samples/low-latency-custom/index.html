@@ -22,12 +22,29 @@
             player.updateSettings({ 'streaming': { 'lowLatencyEnabled': true }});
             player.updateSettings({'debug': {'logLevel': dashjs.Debug.LOG_LEVEL_WARNING }});
             player.updateSettings({
-            'streaming': {
-                'abr': {
-                    'useDefaultABRRules': true
+                'streaming': {
+                    'abr': {
+                        'useDefaultABRRules': true
+                    }
                 }
-            }
-        });
+            });
+
+            // Set console logging level
+            // Can be LOG_LEVEL_NONE, LOG_LEVEL_FATAL, LOG_LEVEL_ERROR, LOG_LEVEL_WARNING, LOG_LEVEL_INFO or LOG_LEVEL_DEBUG
+            // player.updateSettings({
+            //     'debug': {
+            //         'logLevel': dashjs.Debug.LOG_LEVEL_DEBUG
+            //     }
+            // });
+
+            // Set provided abr rule - "abrDynamic" (default), "abrBola" and "abrThroughput"
+            player.updateSettings({
+                'streaming': {
+                    'abr': {
+                        'ABRStrategy': 'abrTGC'
+                    }
+                }
+            });
 
             applyParameters();
 
@@ -168,33 +185,33 @@
         }
 
         setInterval(function() {
-                var dashMetrics = player.getDashMetrics();
-                var settings = player.getSettings();
+            var dashMetrics = player.getDashMetrics();
+            var settings = player.getSettings();
 
-                var currentLatency = parseFloat(player.getCurrentLiveLatency(), 10);
-                document.getElementById("latency-tag").innerHTML = currentLatency + " secs";
+            var currentLatency = parseFloat(player.getCurrentLiveLatency(), 10);
+            document.getElementById("latency-tag").innerHTML = currentLatency + " secs";
 
-                document.getElementById("mindrift-tag").innerHTML = settings.streaming.liveCatchUpMinDrift + " secs";
+            document.getElementById("mindrift-tag").innerHTML = settings.streaming.liveCatchUpMinDrift + " secs";
 
-                var currentPlaybackRate = player.getPlaybackRate();
-                document.getElementById("playbackrate-tag").innerHTML = Math.round(currentPlaybackRate * 100) / 100;
+            var currentPlaybackRate = player.getPlaybackRate();
+            document.getElementById("playbackrate-tag").innerHTML = Math.round(currentPlaybackRate * 100) / 100;
 
-                var currentBuffer = dashMetrics.getCurrentBufferLevel("video");
-                document.getElementById("buffer-tag").innerHTML = currentBuffer + " secs";
-            }, 200);
+            var currentBuffer = dashMetrics.getCurrentBufferLevel("video");
+            document.getElementById("buffer-tag").innerHTML = currentBuffer + " secs";
+        }, 200);
 
-            player.on(dashjs.MediaPlayer.events.QUALITY_CHANGE_REQUESTED, (e) => {
-                console.warn('Quality changed requested', e);
-            });
+        player.on(dashjs.MediaPlayer.events.QUALITY_CHANGE_REQUESTED, (e) => {
+            console.warn('Quality changed requested', e);
+        });
 
-            player.on(dashjs.MediaPlayer.events.QUALITY_CHANGE_RENDERED, (e) => {
-                console.warn('Quality changed', e);
-                const quality = player.getBitrateInfoListFor('video')[e.newQuality];
-                if (!quality) {
-                    return;
-                }
-                document.querySelector('#quality-tag').innerText = `${quality.width}x${quality.height}, ${quality.bitrate / 1000}Kbps`;
-            });
+        player.on(dashjs.MediaPlayer.events.QUALITY_CHANGE_RENDERED, (e) => {
+            console.warn('Quality changed', e);
+            const quality = player.getBitrateInfoListFor('video')[e.newQuality];
+            if (!quality) {
+                return;
+            }
+            document.querySelector('#quality-tag').innerText = `${quality.width}x${quality.height}, ${quality.bitrate / 1000}Kbps`;
+        });
 
         window.startRecording = () => {
             console.info('Begin recording');

@@ -143,6 +143,9 @@ class Constants {
          */
         this.ABR_STRATEGY_THROUGHPUT = 'abrThroughput';
 
+        // custom ABR rule
+        this.ABR_STRATEGY_TGC = 'abrTGC';
+
         /**
          *  @constant {string} MOVING_AVERAGE_SLIDING_WINDOW Moving average sliding window
          *  @memberof Constants#
