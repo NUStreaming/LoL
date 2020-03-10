@@ -1,11 +1,23 @@
 const fs = require("fs");
 const puppeteer = require("puppeteer-core");
-const patterns = require("./network-patterns.js");
+const normalNetworkPatterns = require("./normal-network-patterns.js");
+const fastNetworkPatterns = require("./fast-network-patterns.js");
 const stats = require("./stats");
 const CHROME_PATH =
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
-const PROFILE = process.env.PROFILE;
+let patterns;
+if (process.env.npm_package_config_ffmpeg_profile === 'PROFILE_FAST') {
+  patterns = fastNetworkPatterns;
+} else {
+  patterns = normalNetworkPatterns
+}
+
+const configNetworkProfile = process.env.npm_package_config_network_profile;
+const NETWORK_PROFILE = patterns[configNetworkProfile] || patterns.PROFILE_CASCADE;
+console.log("Network profile:", NETWORK_PROFILE);
+
+// custom
 const readline = require('readline').createInterface({ input: process.stdin, output: process.stdout });
 
 run()
@@ -46,6 +58,9 @@ run()
 
       ///////////////////////////////////////////////////////////////////////////////////
       // QoE model - see https://xia.cs.cmu.edu/resources/Documents/Yin_sigcomm15.pdf
+      // Todo: 
+      // -- include averageLatency?
+      // -- rethink totalRebufferTime as it varies with test duration
       ///////////////////////////////////////////////////////////////////////////////////
       // QoE score breakdown, initialize weights to 0 first
       evaluate.resultsQoe = {
@@ -61,7 +76,7 @@ run()
       evaluate.resultsQoe.averageBitrate.weight = 1;
       evaluate.resultsQoe.averageBitrateVariations.weight = 1;
       evaluate.resultsQoe.totalRebufferTime.weight = 3000;
-      // evaluate.resultsQoe.averageLatency.weight = 3000; // supposed to be startupDelay, but we could add in averageLatency instead? - need to figure out a good weight
+      // evaluate.resultsQoe.startupDelay.weight = 3000;
 
       // calculate total QoE score
       let total = 0;
@@ -138,9 +153,7 @@ async function run() {
     window.startRecording();
   });
 
-  const networkPattern = patterns[PROFILE] || patterns.PROFILE_NORMAL;
-  console.log(networkPattern);
-  await runNetworkPattern(cdpClient, networkPattern);
+  await runNetworkPattern(cdpClient, NETWORK_PROFILE);
 
   const metrics = await page.evaluate(() => {
     if (window.stopRecording) {
@@ -206,7 +219,7 @@ async function run() {
   let result = {
     byDownload: resultByDownload,
     overall: resultOverall,
-    networkPattern: networkPattern,
+    networkPattern: NETWORK_PROFILE,
     abrStrategy: metrics.abrStrategy
   };
 
