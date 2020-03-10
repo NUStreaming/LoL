@@ -6,11 +6,11 @@ const CHROME_PATH =
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 const PROFILE = process.env.PROFILE;
+const readline = require('readline').createInterface({ input: process.stdin, output: process.stdout });
 
 run()
   .then((result) => {
     if (result) {
-      console.log("Test finished. Press cmd+c to exit.");
       if (!fs.existsSync('./results')){
         fs.mkdirSync('./results');
       }
@@ -21,17 +21,74 @@ run()
         fs.mkdirSync(folder);
       }
 
-      let filenameNetworkPattern = folder + '/network-pattern.json';
       let filenameByDownload = folder + '/metrics-by-download.json';
       let filenameOverall = folder + '/metrics-overall.json';
+      let filenameEvaluate = folder + '/evaluate.json';
     
-      fs.writeFileSync(filenameNetworkPattern, JSON.stringify(result.networkPattern));
       fs.writeFileSync(filenameByDownload, JSON.stringify(result.byDownload));
       fs.writeFileSync(filenameOverall, JSON.stringify(result.overall));
 
-      console.log('Results files generated:');
-      console.log('> ' + filenameByDownload);
-      console.log('> ' + filenameOverall);
+      /////////////////////////////////////
+      // evaluate.js
+      /////////////////////////////////////
+      /* testTime, networkPattern, abrStrategy, comments
+       * + resultsQoe obj
+       *  - averageBitrate
+       *  - averageBitrateVariations / numSwitches (added both)
+       *  - totalRebufferTime
+       *  - startupDelay (not used for now as startup is invalid with stabilization feature in the testing)
+       *  - averageLatency (not in standard QoE model but avail here first)
+       */
+      let evaluate = {};
+      evaluate.testTime = new Date();
+      evaluate.networkPattern = result.networkPattern;
+      evaluate.abrStrategy = result.abrStrategy;
+
+      ///////////////////////////////////////////////////////////////////////////////////
+      // QoE model - see https://xia.cs.cmu.edu/resources/Documents/Yin_sigcomm15.pdf
+      ///////////////////////////////////////////////////////////////////////////////////
+      // QoE score breakdown, initialize weights to 0 first
+      evaluate.resultsQoe = {
+        averageBitrate:           { weight: 0, value: (result.overall.averageBitrate / 1000),           subtotal: 0},  // raw units: bps, QoE units: kbps
+        averageBitrateVariations: { weight: 0, value: (result.overall.averageBitrateVariations / 1000), subtotal: 0},  // raw units: bps, QoE units: kbps
+        numSwitches:              { weight: 0, value: result.overall.numSwitches,                       subtotal: 0},
+        totalRebufferTime:        { weight: 0, value: (result.overall.stallDurationMs / 1000),          subtotal: 0},  // raw units: ms, QoE units: s 
+        averageLatency:           { weight: 0, value: result.overall.averageLatency,                    subtotal: 0}   // raw units: s, QoE units: s
+        // startupDelay:             { weight: 0, value: result.startupDelay,                              subtotal: 0}  // current units: s, QoE units: s
+      };
+
+      // select desired weights - BALANCED
+      evaluate.resultsQoe.averageBitrate.weight = 1;
+      evaluate.resultsQoe.averageBitrateVariations.weight = 1;
+      evaluate.resultsQoe.totalRebufferTime.weight = 3000;
+      // evaluate.resultsQoe.averageLatency.weight = 3000; // supposed to be startupDelay, but we could add in averageLatency instead? - need to figure out a good weight
+
+      // calculate total QoE score
+      let total = 0;
+      for (var key in evaluate.resultsQoe) {
+        if (evaluate.resultsQoe.hasOwnProperty(key)) { 
+          // calculate subtotal for each component first
+          evaluate.resultsQoe[key].subtotal = evaluate.resultsQoe[key].weight * evaluate.resultsQoe[key].value;
+
+          if (key === 'averageBitrate') total += evaluate.resultsQoe[key].subtotal;
+          else  total -= evaluate.resultsQoe[key].subtotal;
+        }
+      }
+      evaluate.resultsQoe.total = total;
+      
+      // finally, allow user to optionally input comments
+      readline.question('Any comments for this test run: ', data => {
+        evaluate.comments = data;
+        readline.close();
+        
+        fs.writeFileSync(filenameEvaluate, JSON.stringify(evaluate));
+
+        console.log('Results files generated:');
+        console.log('> ' + filenameByDownload);
+        console.log('> ' + filenameOverall);
+        console.log('> ' + filenameEvaluate);
+        console.log("Test finished. Press cmd+c to exit.");
+      });
     }
     else {
       console.log('Unable to generate test results, likely some error occurred.. Please check program output above.')
@@ -116,13 +173,12 @@ async function run() {
   ////////////////////////////////////
   // may.lim: custom results returned
   ////////////////////////////////////
-  console.log(metrics);
+  // console.log(metrics);
   console.log('Processing client metrics to results files..');
 
   // metrics-by-download.json
   let resultByDownload = metrics.byDownload;
   for (var key in resultByDownload) {
-    // check if the property/key is defined in the object itself, not in parent
     if (resultByDownload.hasOwnProperty(key)) { 
         resultByDownload[key].averageBitrate = stats.computeAverageBitrate(resultByDownload[key].switchHistory, resultByDownload[key].downloadTimeRelative);
         resultByDownload[key].numSwitches = resultByDownload[key].switchHistory.length;
@@ -133,13 +189,25 @@ async function run() {
   let resultOverall = metrics.overall;
   resultOverall.averageBitrate = stats.computeAverageBitrate(resultOverall.switchHistory);
   resultOverall.numSwitches = resultOverall.switchHistory.length;
+  // calculate averageBitrateVariations
+  if (resultOverall.switchHistory.length > 1) {
+    let totalBitrateVariations = 0;
+    for (var i = 0; i < resultOverall.switchHistory.length - 1; i++) {
+      totalBitrateVariations += Math.abs(resultOverall.switchHistory[i+1].quality.bitrate - resultOverall.switchHistory[i].quality.bitrate);
+    }
+    resultOverall.averageBitrateVariations = totalBitrateVariations / (resultOverall.switchHistory.length - 1);
+  } else {
+    resultOverall.averageBitrateVariations = 0; 
+  }
+  // delete unwanted data
   delete resultOverall.currentLatency;
   delete resultOverall.currentBufferLength;
 
   let result = {
     byDownload: resultByDownload,
     overall: resultOverall,
-    networkPattern: networkPattern
+    networkPattern: networkPattern,
+    abrStrategy: metrics.abrStrategy
   };
 
   return result;

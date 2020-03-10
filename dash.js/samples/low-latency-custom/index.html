@@ -169,6 +169,7 @@
         const player = init();
         const video = document.querySelector("video")
         let stallingAt = null;
+        let startupAt = null
         const CMA = () => {
             let average = 0;
             let count = 0;
@@ -229,10 +230,16 @@
                 currentLatency: 0,
                 currentBufferLength: 0
             };
+
+            // final results obj to be returned to run.js
             window.abrHistory = {
                 byDownload: {},
-                overall: {}
+                overall: {},
+                abrStrategy: ''
             };
+
+            // Record the abrStrategy
+            window.abrHistory.abrStrategy = player.getSettings().streaming.abr.ABRStrategy;
 
             // Record the initial quality
             recordSwitch(player.getBitrateInfoListFor('video')[player.getQualityFor('video')]);
@@ -347,6 +354,18 @@
                 }
                 else return date;
             }
+
+            // for startupDelay - not used for now
+            // player.on(dashjs.MediaPlayer.events.PLAYBACK_STARTED, (e) => {
+            //     startupAt = performance.now();
+            // });
+
+            // player.on(dashjs.MediaPlayer.events.PLAYBACK_PLAYING, (e) => {
+            //     // only record startup event once per player load
+            //     if (startupAt !== null) {
+            //         window.abrHistory.startupDelay = (performance.now() - startupAt);
+            //     }
+            // });
 
             player.on(dashjs.MediaPlayer.events.QUALITY_CHANGE_REQUESTED, (e) => {
                 recordSwitchRequest(player.getBitrateInfoListFor('video')[e.newQuality]);
