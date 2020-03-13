@@ -9,6 +9,7 @@ function TGCRule(config) {
     config = config || {};
     const context = this.context;
     const dashMetrics = config.dashMetrics;
+    const somController=new SOMAbrController();
 
     let instance,
         logger;
@@ -47,14 +48,14 @@ function TGCRule(config) {
         const latency = throughputHistory.getAverageLatency(mediaType);
         const useBufferOccupancyABR = rulesContext.useBufferOccupancyABR();
 
-
         if (isNaN(throughput) || !bufferStateVO || useBufferOccupancyABR) {
             return switchRequest;
         }
 
         if (abrController.getAbandonmentStateFor(mediaType) !== MetricsConstants.ABANDON_LOAD) {
             if (bufferStateVO.state === MetricsConstants.BUFFER_LOADED || isDynamic) {
-                switchRequest.quality = abrController.getQualityForBitrate(mediaInfo, throughput, latency);
+                // switchRequest.quality = abrController.getQualityForBitrate(mediaInfo, throughput, latency);
+                switchRequest.quality = somController.getQualityUsingSom(mediaInfo,throughput,latency,bufferStateVO.target);
                 scheduleController.setTimeToLoadDelay(0);
                 // logger.debug('[' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
                 console.log('[' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
@@ -84,6 +85,70 @@ function TGCRule(config) {
     setup();
 
     return instance;
+}
+
+class SOMAbrController{
+
+    constructor() {
+        this.somBitrateNeurons=null;
+    }
+
+    getSomBitrateNeurons(mediaInfo){
+        if (!this.somBitrateNeurons){
+            this.somBitrateNeurons = [];
+            const bitrateList = mediaInfo.bitrateList;
+            for (let i = 0; i < bitrateList.length; i++) {
+                let neuron={
+                    qualityIndex: i,
+                    bitrate: bitrateList[i].bandwidth,
+                    state: {
+                        throughput: 0,
+                        latency: 0,
+                        buffer: 0
+                    }
+                }
+                this.somBitrateNeurons.push(neuron);
+            }
+        }
+        return this.somBitrateNeurons;
+    }
+
+    getDistance(a, b, w) {
+        return a
+            .map((x, i) => (w[i]*(x-b[i])) ** 2) // square the difference*w
+            .reduce((sum, now) => sum + now) // sum
+            ** (1/2) // square root
+    }
+
+    updateNeuronState(neuron, x){
+        let state=neuron.state;
+        state.throughput=state.throughput+(x[0]-state.throughput)*0.2
+        state.latency=state.latency+(x[1]-state.latency)*0.3
+        state.buffer=state.buffer+(x[2]-state.buffer)*0.1
+    }
+
+    getQualityUsingSom(mediaInfo, throughput, latency, bufferSize){
+        let somElements=this.getSomBitrateNeurons(mediaInfo);
+        let minDistance=null;
+        let minIndex=null;
+        let neuronTobeUpdated=null;
+        for (let i =0; i< somElements.length ; i++) {
+            let somNeuron=somElements[i];
+            let somNeuronState=somNeuron.state;
+            let somData=[somNeuronState.throughput,somNeuronState.latency,somNeuronState.buffer];
+            let distance=this.getDistance(somData,[throughput,latency,bufferSize],[1,1,1]);
+            if (minDistance==null || distance<minDistance){
+                minDistance=distance;
+                minIndex=somNeuron.qualityIndex;
+                neuronTobeUpdated=somNeuron;
+            }
+            console.log("distance=",distance);
+        }
+        if (neuronTobeUpdated!=null){
+            this.updateNeuronState(neuronTobeUpdated,[throughput,latency,bufferSize]);
+        }
+        return minIndex;
+    }
 }
 
 TGCRule.__dashjs_factory_name = 'TGCRule';
