@@ -288,6 +288,9 @@
                 // have to pass the values and not object over, otherwise the values will be updated incorrectly later (cause pass by reference?)..
                 for (let key in history) {
                     if (history.hasOwnProperty(key)) { 
+                        // skip adding switchRequests to each segment's metrics for better readability of result file 
+                        if (key === 'switchRequests') continue;
+
                         if (!Array.isArray(history[key])) {
                             currentMetrics[key] = history[key];
                         } else {
