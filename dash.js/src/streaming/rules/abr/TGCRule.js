@@ -102,7 +102,7 @@ class SOMAbrController{
                     qualityIndex: i,
                     bitrate: bitrateList[i].bandwidth,
                     state: {
-                        throughput: 0,
+                        throughput: bitrateList[i].bandwidth,
                         latency: 0,
                         buffer: 0
                     }
