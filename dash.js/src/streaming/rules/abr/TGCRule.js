@@ -122,9 +122,10 @@ class SOMAbrController{
 
     updateNeuronState(neuron, x){
         let state=neuron.state;
-        state.throughput=state.throughput+(x[0]-state.throughput)*0.2
-        state.latency=state.latency+(x[1]-state.latency)*0.3
-        state.buffer=state.buffer+(x[2]-state.buffer)*0.1
+        let w=0.1; // learning rate
+        state.throughput=state.throughput+(x[0]-state.throughput)*w
+        state.latency=state.latency+(x[1]-state.latency)*w
+        state.buffer=state.buffer+(x[2]-state.buffer)*w
     }
 
     getQualityUsingSom(mediaInfo, throughput, latency, bufferSize){
