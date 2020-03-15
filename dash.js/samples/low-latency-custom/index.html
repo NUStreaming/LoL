@@ -41,7 +41,8 @@
             player.updateSettings({
                 'streaming': {
                     'abr': {
-                        'ABRStrategy': 'abrTGC'
+                        'ABRStrategy': 'abrTGCHeuristic'
+                        // 'ABRStrategy': 'abrBola'
                     }
                 }
             });
@@ -199,6 +200,8 @@
 
             var currentBuffer = dashMetrics.getCurrentBufferLevel("video");
             document.getElementById("buffer-tag").innerHTML = currentBuffer + " secs";
+
+            console.log('abrStrategy: ' + player.getSettings().streaming.abr.ABRStrategy);
         }, 200);
 
         player.on(dashjs.MediaPlayer.events.QUALITY_CHANGE_REQUESTED, (e) => {
@@ -265,11 +268,14 @@
             ////////////////////////////////////////////////////////////////////////////////
             // may.lim: add logging on segment download (instead of polling-based)
             ////////////////////////////////////////////////////////////////////////////////
-            player.on(dashjs.MediaPlayer.events.FRAGMENT_LOADING_COMPLETED, (e) => {
+            player.on(dashjs.MediaPlayer.events.FRAGMENT_LOADING_COMPLETED, (e) => {                
                 const currentLatency = parseFloat(player.getCurrentLiveLatency(), 10);
                 const currentBuffer = player.getDashMetrics().getCurrentBufferLevel("video");
                 history.averageLatency = latencyCMA.average(currentLatency);
                 history.averageBufferLength = bufferCMA.average(currentBuffer);
+
+                console.log('[client] currentLatency: ' + currentLatency);
+                console.log('[client] currentBuffer: ' + currentBuffer);
                 
                 history.currentLatency = currentLatency;
                 history.currentBufferLength = currentBuffer;

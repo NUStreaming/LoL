@@ -44,7 +44,7 @@ function TGCRule(config) {
         const isDynamic = streamInfo && streamInfo.manifestInfo ? streamInfo.manifestInfo.isDynamic : null;
         const throughputHistory = abrController.getThroughputHistory();
         const throughput = throughputHistory.getSafeAverageThroughput(mediaType, isDynamic);
-        console.log('[TGCRule] throughput: ' + Math.round(throughput) + 'kbps');
+        // console.log('[TGCRule] throughput: ' + Math.round(throughput) + 'kbps');
         const latency = throughputHistory.getAverageLatency(mediaType);
         const useBufferOccupancyABR = rulesContext.useBufferOccupancyABR();
 
