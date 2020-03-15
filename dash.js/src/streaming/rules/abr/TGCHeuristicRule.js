@@ -110,12 +110,7 @@ function TGCHeuristicRule(config) {
 
         /* ************************
          *    Main abr logic
-         * ************************
-         * attempting to do enumeration online since we don't consider future chunks (as in Pensive's FastMPC implementation)
-         * Pensieve only does the segment enumeration offline ("itertools.product([0,1,2,3,4,5], repeat=5)")
-         *   - i.e. 0,0,0,0,0 / 0,0,0,0,1 /...
-         * hence since Pensive is also doing the bitrate-reward calculation dynamically, lets try to do this online here too
-         */
+         * ************************ */
         
         let segmentDuration = 0.5;      // todo - retrieve from dash
         let futureSegmentCount = 5;     // lookahead window
