@@ -36,8 +36,6 @@ import SwitchHistoryRule from './SwitchHistoryRule';
 import BolaRule from './BolaRule';
 import FactoryMaker from '../../../core/FactoryMaker';
 import SwitchRequest from '../SwitchRequest';
-import TGCRule from './TGCRule';
-import TGCHeuristicRule from './TGCHeuristicRule';
 
 const QUALITY_SWITCH_RULES = 'qualitySwitchRules';
 const ABANDON_FRAGMENT_RULES = 'abandonFragmentRules';
@@ -71,16 +69,6 @@ function ABRRulesCollection(config) {
             );
             qualitySwitchRules.push(
                 ThroughputRule(context).create({
-                    dashMetrics: dashMetrics
-                })
-            );
-            qualitySwitchRules.push(
-                TGCRule(context).create({
-                    dashMetrics: dashMetrics
-                })
-            );
-            qualitySwitchRules.push(
-                TGCHeuristicRule(context).create({
                     dashMetrics: dashMetrics
                 })
             );

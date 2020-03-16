@@ -10,6 +10,11 @@ function TgcHeuristicRuleClass() {
     let context = this.context;
     let instance;
 
+    let metricsConstants = {
+        ABANDON_LOAD: 'abandonload',
+        BUFFER_STATE: 'BufferState'
+    }
+
     let currentQuality = -1;
 
     // A cumulative moving average object
@@ -37,11 +42,10 @@ function TgcHeuristicRuleClass() {
     function getMaxIndex(rulesContext) {
         let switchRequest = SwitchRequest(context).create();
 
-        // here you can get some informations aboit metrics for example, to implement the rule
         let metricsModel = MetricsModel(context).getInstance();
         let dashMetrics = DashMetrics(context).getInstance();
-        var mediaType = rulesContext.getMediaInfo().type;
-        var metrics = metricsModel.getMetricsFor(mediaType, true);
+        let mediaType = rulesContext.getMediaInfo().type;
+        let metrics = metricsModel.getMetricsFor(mediaType, true);
 
         // Get current bitrate
         let streamController = StreamController(context).getInstance();
@@ -51,11 +55,14 @@ function TgcHeuristicRuleClass() {
         // Additional stuff
         const mediaInfo = rulesContext.getMediaInfo();
         const bitrateList = mediaInfo.bitrateList;  // [{bandwidth: 200000, width: 640, height: 360}, ...]
-        // const bufferStateVO = dashMetrics.getLatestBufferInfoVO(mediaType, true, MetricsConstants.BUFFER_STATE);
+        const bufferStateVO = dashMetrics.getLatestBufferInfoVO(mediaType, true, metricsConstants.BUFFER_STATE);
+        const scheduleController = rulesContext.getScheduleController();
         const currentBufferLevel = dashMetrics.getCurrentBufferLevel(mediaType, true);
         const streamInfo = rulesContext.getStreamInfo();
         const isDynamic = streamInfo && streamInfo.manifestInfo ? streamInfo.manifestInfo.isDynamic : null;
         const throughputHistory = abrController.getThroughputHistory();
+        // todo - verify this latency value vs. parseFloat(player.getCurrentLiveLatency(), 10);
+        const latency = throughputHistory.getAverageLatency(mediaType);
         
         /*
          * decide which throughput value to use
@@ -63,18 +70,14 @@ function TgcHeuristicRuleClass() {
         // const throughput = throughputHistory.getAverageThroughput(mediaType, isDynamic);
         const throughput = throughputHistory.getSafeAverageThroughput(mediaType, isDynamic);
         console.log('[TgcHeuristicRule] throughput: ' + Math.round(throughput) + 'kbps');
-        
-        // todo - verify this latency value vs. parseFloat(player.getCurrentLiveLatency(), 10);
-        const latency = throughputHistory.getAverageLatency(mediaType);
 
         if (isNaN(throughput)) {
             return switchRequest;
         }
 
-        // todo - get metricsConstants in, else check if we need this part
-        // if (abrController.getAbandonmentStateFor(mediaType) === MetricsConstants.ABANDON_LOAD) {
-        //     return switchRequest;
-        // }
+        if (abrController.getAbandonmentStateFor(mediaType) === metricsConstants.ABANDON_LOAD) {
+            return switchRequest;
+        }
 
         /* ************************
          *    Main abr logic
@@ -180,6 +183,9 @@ function TgcHeuristicRuleClass() {
         switchRequest.quality = nextQuality;
         switchRequest.reason = { throughput: throughput, latency: latency};
         switchRequest.priority = SwitchRequest.PRIORITY.STRONG;
+
+        // todo - check what is this for
+        scheduleController.setTimeToLoadDelay(0);
 
         // logger.debug('[' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
         console.log('[TgcHeuristicRule][' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');

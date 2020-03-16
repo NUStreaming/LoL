@@ -9,8 +9,12 @@
         Debug files are not compressed or obfuscated making the file size much larger compared with dash.all.min.js-->
     <!--<script src="../../dist/dash.all.min.js"></script>-->
 
+    <script src="../low-latency/abr/TgcHeuristicRule.js" class="code"></script>
+    <script src="../low-latency/abr/TgcLearningRule.js" class="code"></script>
+
     <script class="code">
         var player, targetLatency, minDrift, catchupPlaybackRate;
+        var ruleUsed = '';
 
         function init() {
             var video,
@@ -21,31 +25,50 @@
             player.initialize(video, url, true);
             player.updateSettings({ 'streaming': { 'lowLatencyEnabled': true }});
             player.updateSettings({'debug': {'logLevel': dashjs.Debug.LOG_LEVEL_WARNING }});
+
+            /* 
+            * Option A: Use default ABR rules
+            */
+            // player.updateSettings({
+            // 'streaming': {
+            //     'abr': {
+            //         'useDefaultABRRules': true
+            //     }
+            // }});
+
+            /* 
+            * Option B: Use custom ABR rules
+            */
+            // ruleUsed = 'TgcHeuristicRule';  // for result logging later
+            // player.addABRCustomRule('qualitySwitchRules', 'TgcHeuristicRule', TgcHeuristicRule);
+            ruleUsed = 'TgcLearningRule';
+            player.addABRCustomRule('qualitySwitchRules', 'TgcLearningRule', TgcLearningRule);
             player.updateSettings({
                 'streaming': {
                     'abr': {
-                        'useDefaultABRRules': true
+                        'useDefaultABRRules': false
                     }
                 }
             });
+            // Use custom rule - end
 
-            // Set console logging level
+            // Set provided abr rule - "abrDynamic" (default), "abrBola" and "abrThroughput" //
+            // player.updateSettings({
+            //     'streaming': {
+            //         'abr': {
+            //             'ABRStrategy': 'abrTGCHeuristic'
+            //             // 'ABRStrategy': 'abrBola'
+            //         }
+            //     }
+            // });
+
+            // Set console logging level //
             // Can be LOG_LEVEL_NONE, LOG_LEVEL_FATAL, LOG_LEVEL_ERROR, LOG_LEVEL_WARNING, LOG_LEVEL_INFO or LOG_LEVEL_DEBUG
             // player.updateSettings({
             //     'debug': {
             //         'logLevel': dashjs.Debug.LOG_LEVEL_DEBUG
             //     }
             // });
-
-            // Set provided abr rule - "abrDynamic" (default), "abrBola" and "abrThroughput"
-            player.updateSettings({
-                'streaming': {
-                    'abr': {
-                        'ABRStrategy': 'abrTGCHeuristic'
-                        // 'ABRStrategy': 'abrBola'
-                    }
-                }
-            });
 
             applyParameters();
 
@@ -200,8 +223,6 @@
 
             var currentBuffer = dashMetrics.getCurrentBufferLevel("video");
             document.getElementById("buffer-tag").innerHTML = currentBuffer + " secs";
-
-            console.log('abrStrategy: ' + player.getSettings().streaming.abr.ABRStrategy);
         }, 200);
 
         player.on(dashjs.MediaPlayer.events.QUALITY_CHANGE_REQUESTED, (e) => {
@@ -242,7 +263,8 @@
             };
 
             // Record the abrStrategy
-            window.abrHistory.abrStrategy = player.getSettings().streaming.abr.ABRStrategy;
+            // window.abrHistory.abrStrategy = player.getSettings().streaming.abr.ABRStrategy;
+            window.abrHistory.abrStrategy = ruleUsed;
 
             // Record the initial quality
             recordSwitch(player.getBitrateInfoListFor('video')[player.getQualityFor('video')]);
