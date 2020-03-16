@@ -46,7 +46,8 @@ function TGCRule(config) {
         const throughput = throughputHistory.getSafeAverageThroughput(mediaType, isDynamic);
         // console.log('[TGCRule] throughput: ' + Math.round(throughput) + 'kbps');
         const latency = throughputHistory.getAverageLatency(mediaType);
-        const useBufferOccupancyABR = rulesContext.useBufferOccupancyABR();
+        //const useBufferOccupancyABR = rulesContext.useBufferOccupancyABR();
+        const useBufferOccupancyABR = false;
 
         if (isNaN(throughput) || !bufferStateVO || useBufferOccupancyABR) {
             return switchRequest;
@@ -55,7 +56,7 @@ function TGCRule(config) {
         if (abrController.getAbandonmentStateFor(mediaType) !== MetricsConstants.ABANDON_LOAD) {
             if (bufferStateVO.state === MetricsConstants.BUFFER_LOADED || isDynamic) {
                 // switchRequest.quality = abrController.getQualityForBitrate(mediaInfo, throughput, latency);
-                switchRequest.quality = somController.getQualityUsingSom(mediaInfo,throughput,latency,bufferStateVO.target);
+                switchRequest.quality = somController.getQualityUsingSom(mediaInfo,throughput*1000,latency,bufferStateVO.target);
                 scheduleController.setTimeToLoadDelay(0);
                 // logger.debug('[' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
                 console.log('[' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
