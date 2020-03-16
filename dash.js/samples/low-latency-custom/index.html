@@ -39,10 +39,14 @@
             /* 
             * Option B: Use custom ABR rules
             */
-            // ruleUsed = 'TgcHeuristicRule';  // for result logging later
-            // player.addABRCustomRule('qualitySwitchRules', 'TgcHeuristicRule', TgcHeuristicRule);
-            ruleUsed = 'TgcLearningRule';
-            player.addABRCustomRule('qualitySwitchRules', 'TgcLearningRule', TgcLearningRule);
+            // TgcHeuristicRule //
+            ruleUsed = 'TgcHeuristicRule';  // for result logging later
+            player.addABRCustomRule('qualitySwitchRules', 'TgcHeuristicRule', TgcHeuristicRule);
+
+            // TgcLearningRule //
+            // ruleUsed = 'TgcLearningRule';   // for result logging later
+            // player.addABRCustomRule('qualitySwitchRules', 'TgcLearningRule', TgcLearningRule);
+
             player.updateSettings({
                 'streaming': {
                     'abr': {
