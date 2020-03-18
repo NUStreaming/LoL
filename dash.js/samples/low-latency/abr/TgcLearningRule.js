@@ -155,7 +155,7 @@ class SOMAbrController{
             let somNeuron=somElements[i];
             let somNeuronState=somNeuron.state;
             let somData=[somNeuronState.throughput,somNeuronState.latency,somNeuronState.buffer];
-            let distance=this.getDistance(somData,[throughput,latency,bufferSize],[1,2,1]);
+            let distance=this.getDistance(somData,[throughput,latency,bufferSize],[0.1,0.2,0.1]);
             if (minDistance==null || distance<minDistance){
                 minDistance=distance;
                 minIndex=somNeuron.qualityIndex;
