@@ -58,20 +58,17 @@ function TgcLearningRuleClass() {
             return switchRequest;
         }
 
-        // To Mehmet: Note that these 2 buffer-related values differ
-        // Current buffer length is stored in currentBufferLevel
-        // Check console log to verify
-        console.log('bufferStateVO.target: ' + bufferStateVO.target + ', currentBufferLevel: ' + currentBufferLevel);
-
         // select next quality using SOM
-        switchRequest.quality = somController.getQualityUsingSom(mediaInfo,throughput*1000,latency,bufferStateVO.target);
+        switchRequest.quality = somController.getQualityUsingSom(mediaInfo,throughput*1000,latency,currentBufferLevel);
         switchRequest.reason = { throughput: throughput, latency: latency};
         switchRequest.priority = SwitchRequest.PRIORITY.STRONG;
 
         scheduleController.setTimeToLoadDelay(0);
 
         // logger.debug('[' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
-        console.log('[TgcLearningRule][' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
+        if (switchRequest.quality!=current){
+            console.log('[TgcLearningRule][' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
+        }
 
         return switchRequest;
     }
@@ -93,18 +90,27 @@ class SOMAbrController{
 
     constructor() {
         this.somBitrateNeurons=null;
+        this.bitrateNormalizationFactor=1;
     }
 
     getSomBitrateNeurons(mediaInfo){
         if (!this.somBitrateNeurons){
             this.somBitrateNeurons = [];
             const bitrateList = mediaInfo.bitrateList;
+            let bitrateVector=[];
+            bitrateList.forEach(element => {
+                bitrateVector.push(element.bandwidth);    
+            });
+            this.bitrateNormalizationFactor=this.getMagnitude(bitrateVector);
+            console.log("throughput normalization factor is "+this.bitrateNormalizationFactor);
+            
             for (let i = 0; i < bitrateList.length; i++) {
                 let neuron={
                     qualityIndex: i,
                     bitrate: bitrateList[i].bandwidth,
                     state: {
-                        throughput: bitrateList[i].bandwidth,
+                        // normalize throughputs
+                        throughput: bitrateList[i].bandwidth/this.bitrateNormalizationFactor,
                         latency: 0,
                         buffer: 0
                     }
@@ -113,6 +119,13 @@ class SOMAbrController{
             }
         }
         return this.somBitrateNeurons;
+    }
+
+    getMagnitude(w){
+        return w
+            .map((x) => (x**2)) // square each element
+            .reduce((sum, now) => sum + now) // sum 
+            ** (1/2) // square root
     }
 
     getDistance(a, b, w) {
@@ -132,6 +145,9 @@ class SOMAbrController{
 
     getQualityUsingSom(mediaInfo, throughput, latency, bufferSize){
         let somElements=this.getSomBitrateNeurons(mediaInfo);
+        // normalize throughput
+        throughput=throughput/this.bitrateNormalizationFactor;
+
         let minDistance=null;
         let minIndex=null;
         let neuronTobeUpdated=null;
@@ -139,7 +155,7 @@ class SOMAbrController{
             let somNeuron=somElements[i];
             let somNeuronState=somNeuron.state;
             let somData=[somNeuronState.throughput,somNeuronState.latency,somNeuronState.buffer];
-            let distance=this.getDistance(somData,[throughput,latency,bufferSize],[1,1,1]);
+            let distance=this.getDistance(somData,[throughput,latency,bufferSize],[0.1,0.2,0.1]);
             if (minDistance==null || distance<minDistance){
                 minDistance=distance;
                 minIndex=somNeuron.qualityIndex;
@@ -147,6 +163,7 @@ class SOMAbrController{
             }
             console.log("distance=",distance);
         }
+
         if (neuronTobeUpdated!=null){
             this.updateNeuronState(neuronTobeUpdated,[throughput,latency,bufferSize]);
         }
