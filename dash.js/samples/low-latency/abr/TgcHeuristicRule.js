@@ -7,6 +7,7 @@ function TgcHeuristicRuleClass() {
     let MetricsModel = factory.getSingletonFactoryByName('MetricsModel');
     let DashMetrics = factory.getSingletonFactoryByName('DashMetrics');
     let StreamController = factory.getSingletonFactoryByName('StreamController');
+    let PlaybackController = factory.getSingletonFactoryByName('PlaybackController');
     let context = this.context;
     let instance;
 
@@ -49,6 +50,7 @@ function TgcHeuristicRuleClass() {
 
         // Get current bitrate
         let streamController = StreamController(context).getInstance();
+        let playbackController = PlaybackController(context).getInstance();
         let abrController = rulesContext.getAbrController();
         let current = abrController.getQualityFor(mediaType, streamController.getActiveStreamInfo());
 
@@ -62,7 +64,8 @@ function TgcHeuristicRuleClass() {
         const isDynamic = streamInfo && streamInfo.manifestInfo ? streamInfo.manifestInfo.isDynamic : null;
         const throughputHistory = abrController.getThroughputHistory();
         // todo - verify this latency value vs. parseFloat(player.getCurrentLiveLatency(), 10);
-        const latency = throughputHistory.getAverageLatency(mediaType);
+        // const latency = throughputHistory.getAverageLatency(mediaType);
+        const latency = playbackController.getCurrentLiveLatency();
         
         /*
          * decide which throughput value to use
@@ -84,7 +87,8 @@ function TgcHeuristicRuleClass() {
          * ************************ */
         
         let segmentDuration = 0.5;      // todo - retrieve from dash
-        let futureSegmentCount = 5;     // lookahead window
+        // let futureSegmentCount = 5;     // lookahead window
+        let futureSegmentCount = 2;     // lookahead window
         let maxReward = -100000000;
         let bestOption = [];
 
@@ -97,76 +101,147 @@ function TgcHeuristicRuleClass() {
 
         // for each option, compute reward and identify option with maxReward
         options.forEach(function (segments, optionIndex) {
-            // let totalBitrate = 0;
-            // let totalBitrateVariations = 0;
-            let totalRebufferTime = 0;
-            // let totalLatency = 0;
+            // create new QoeEvaluator object for each option
+            // e.g. for each [200, 200, 200, 200, 200]
+            let maxBitrateKbps = bitrateList[bitrateList.length - 1].bandwidth / 1000.0;    // max bitrate level
+            let qoeEvaluator = new QoeEvaluator(segmentDuration, maxBitrateKbps);
+
+            // set up tmpBuffer to estimate rebuffering time for each segment
             let tmpBuffer = currentBufferLevel;
-            let prevQuality = currentQuality;
+            // console.log('latency: ' + latency);
+            let currentLatency = latency;
 
-            let averageBitrateCMA = CMA();
-            let averageBitrateVariationsCMA = CMA();
-
-            // for each segment quality in lookahead window (size: futureSegmentCount)
+            // for each segment in lookahead window (window size: futureSegmentCount)
             segments.forEach(function (quality, segmentIndex) {
-                let bitrate = bitrateList[quality].bandwidth;
+                // metrics required for each segment
+                let segmentBitrateKbps, segmentRebufferTime, segmentRebufferTimecurrentLatency;
 
-                // update reward factor - totalBitrate
-                // totalBitrate += bitrate;
-                averageBitrateCMA.average(bitrate / 1000); 
+                segmentBitrateKbps = bitrateList[quality].bandwidth / 1000.0;
 
-                // update reward factor - totalBitrateVariations
-                if (prevQuality !== -1) {
-                    let prevBitrate = bitrateList[prevQuality].bandwidth;
-                    // totalBitrateVariations += Math.abs(bitrate - prevBitrate);
-                    let bitrateVariation = Math.abs(bitrate - prevBitrate);
-                    averageBitrateVariationsCMA.average(bitrateVariation / 1000); 
-                }
-
-                // estimate bandwidth based on throughput and segmentIndex
-                // naive one for now - assume throughput constant
-                // todo - use harmonic mean or something
-                let bandwidth = throughput;                             // units: kbps
-                let segmentSize = segmentDuration * bitrate / 1000.0;   // units: bps * s -> bits, divide by 1000 -> kbits
-                let downloadTime = segmentSize / bandwidth;             // units: kbits / kbps -> s
+                /*
+                 * Estimate downloadTime based on throughput and segmentSize
+                 * *** todo - naive throughput estimation for now: assume constant for future segments, update to harmonic mean or something ***
+                 * *** todo - naive segmentSize estimation for now: assume CBR-based, update to VBR-based segmentSize calculation ***
+                 */
+                let bandwidth = throughput;                                    // units: kbps
+                let segmentSize = segmentDuration * segmentBitrateKbps;        // units: s * kbps -> kbits
+                let downloadTime = segmentSize / bandwidth;                    // units: kbits / kbps -> s
                 
                 // console.log('----------------------------------------------------');
                 // console.log('throughput: ' + throughput + ', segmentSize: ' + segmentSize + ', downloadTime: ' + downloadTime + ', tmpBuffer (bef): ' + tmpBuffer);
+                // console.log('----------------------------------------------------');
 
-                // update reward factor - totalRebufferTime
+                /*
+                 * *** todo - buffer behaviour is segment-based.. update to chunk-based buffer download and playback ***
+                 */
                 if (downloadTime > tmpBuffer) { // rebuffer
-                    totalRebufferTime += (downloadTime - tmpBuffer);
-                    tmpBuffer = 0;
+                    segmentRebufferTime = (downloadTime - tmpBuffer);
+                    // update buffer
+                    tmpBuffer = segmentDuration;    // corrected, to correct further (see todo)
                 } else {
+                    segmentRebufferTime = 0;
+                    // update buffer
                     tmpBuffer -= downloadTime;
                     tmpBuffer += segmentDuration;
                 }
 
-                // console.log('totalRebufferTime: ' + totalRebufferTime + ', tmpBuffer (aft): ' + tmpBuffer)
+                /*
+                 * *** todo - latency calculation assumes playback rate = 1.. update to account for variable playback ***
+                 * e.g. catchUpTime = segmentDuration - (segmentDuration / playbackRate); 
+                 *      currentLatency = currentLatency - catchUpTime + segmentRebufferTime;
+                 */
+                // console.log('currentLatency (bef): ' + currentLatency);
+                // console.log('segmentRebufferTime: ' + segmentRebufferTime);
+                currentLatency = currentLatency + segmentRebufferTime;
+                // console.log('currentLatency (aft): ' + currentLatency);
 
-                // update reward factor - totalLatency?
-                // todo
+                qoeEvaluator.logSegmentMetrics(segmentBitrateKbps, segmentRebufferTime, currentLatency);
+            });
 
-                prevQuality = quality;
-            })
-
-            // calculate potential reward
-            // note qoe units - 
-            //   bitrate, bitrateVariations : kbps
-            //   rebufferTime, latency      : s
-            let wtBitrate = 1, wtBitrateVariations = 1, wtRebufferTime = 3000;
-            // let reward = totalBitrate * wtBitrate - totalBitrateVariations * wtBitrateVariations - totalRebufferTime * wtRebufferTime;
-            let reward = averageBitrateCMA.getAverage() * wtBitrate 
-                - averageBitrateVariationsCMA.getAverage() * wtBitrateVariations 
-                - totalRebufferTime * wtRebufferTime;
-
-            // console.log('averageBitrate: ' + averageBitrateCMA.getAverage() + ', averageBrVariations: ' + averageBitrateVariationsCMA.getAverage() + ', totalRebuffer: ' + totalRebufferTime + ' (' + (totalRebufferTime * wtRebufferTime) + ')');
-            // console.log('--- Option ' + optionIndex + ' -> segments: ' + segments + ', reward: ' + reward);
-            
+            // calculate potential reward for this option
+            let currentQoeMetrics = qoeEvaluator.getQoeMetrics();
+            // console.log('******* option: ' + segments + ' *********');
+            // console.log(currentQoeMetrics);
+            let reward = currentQoeMetrics.total;
             if (reward > maxReward) {
                 maxReward = reward;
                 bestOption = options[optionIndex];
             }
+
+            /* 
+             * NOT IN USE -
+             * Implementation prior to QoeEvaluator!
+             */
+            // // let totalBitrate = 0;
+            // // let totalBitrateVariations = 0;
+            // let totalRebufferTime = 0;
+            // // let totalLatency = 0;
+            // let tmpBuffer = currentBufferLevel;
+            // let prevQuality = currentQuality;
+
+            // let averageBitrateCMA = CMA();
+            // let averageBitrateVariationsCMA = CMA();
+
+            // // for each segment in lookahead window (window size: futureSegmentCount)
+            // segments.forEach(function (quality, segmentIndex) {
+            //     let bitrate = bitrateList[quality].bandwidth;
+
+            //     // update reward factor - totalBitrate
+            //     // totalBitrate += bitrate;
+            //     averageBitrateCMA.average(bitrate / 1000); 
+
+            //     // update reward factor - totalBitrateVariations
+            //     if (prevQuality !== -1) {
+            //         let prevBitrate = bitrateList[prevQuality].bandwidth;
+            //         // totalBitrateVariations += Math.abs(bitrate - prevBitrate);
+            //         let bitrateVariation = Math.abs(bitrate - prevBitrate);
+            //         averageBitrateVariationsCMA.average(bitrateVariation / 1000); 
+            //     }
+
+            //     // estimate bandwidth based on throughput and segmentIndex
+            //     // naive one for now - assume throughput constant
+            //     // todo - use harmonic mean or something
+            //     let bandwidth = throughput;                             // units: kbps
+            //     let segmentSize = segmentDuration * bitrate / 1000.0;   // units: bps * s -> bits, divide by 1000 -> kbits
+            //     let downloadTime = segmentSize / bandwidth;             // units: kbits / kbps -> s
+                
+            //     // console.log('----------------------------------------------------');
+            //     // console.log('throughput: ' + throughput + ', segmentSize: ' + segmentSize + ', downloadTime: ' + downloadTime + ', tmpBuffer (bef): ' + tmpBuffer);
+
+            //     // update reward factor - totalRebufferTime
+            //     if (downloadTime > tmpBuffer) { // rebuffer
+            //         totalRebufferTime += (downloadTime - tmpBuffer);
+            //         tmpBuffer = 0;
+            //     } else {
+            //         tmpBuffer -= downloadTime;
+            //         tmpBuffer += segmentDuration;
+            //     }
+
+            //     // console.log('totalRebufferTime: ' + totalRebufferTime + ', tmpBuffer (aft): ' + tmpBuffer)
+
+            //     // update reward factor - totalLatency?
+            //     // todo
+
+            //     prevQuality = quality;
+            // })
+
+            // // calculate potential reward
+            // // note qoe units - 
+            // //   bitrate, bitrateVariations : kbps
+            // //   rebufferTime, latency      : s
+            // let wtBitrate = 1, wtBitrateVariations = 1, wtRebufferTime = 3000;
+            // // let reward = totalBitrate * wtBitrate - totalBitrateVariations * wtBitrateVariations - totalRebufferTime * wtRebufferTime;
+            // let reward = averageBitrateCMA.getAverage() * wtBitrate 
+            //     - averageBitrateVariationsCMA.getAverage() * wtBitrateVariations 
+            //     - totalRebufferTime * wtRebufferTime;
+
+            // // console.log('averageBitrate: ' + averageBitrateCMA.getAverage() + ', averageBrVariations: ' + averageBitrateVariationsCMA.getAverage() + ', totalRebuffer: ' + totalRebufferTime + ' (' + (totalRebufferTime * wtRebufferTime) + ')');
+            // // console.log('--- Option ' + optionIndex + ' -> segments: ' + segments + ', reward: ' + reward);
+            
+            // if (reward > maxReward) {
+            //     maxReward = reward;
+            //     bestOption = options[optionIndex];
+            // }
         });
 
         let nextQuality;

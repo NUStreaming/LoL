@@ -11,6 +11,7 @@
 
     <script src="../low-latency/abr/TgcHeuristicRule.js" class="code"></script>
     <script src="../low-latency/abr/TgcLearningRule.js" class="code"></script>
+    <script src="../low-latency/abr/QoeEvaluator.js" class="code"></script>
 
     <script class="code">
         var player, targetLatency, minDrift, catchupPlaybackRate;
@@ -248,6 +249,9 @@
             const latencyCMA = CMA();
             const bufferCMA = CMA();
 
+            // todo qoeEvaluator
+            // let lastStallDurationMs = 0;
+
             // const history = window.abrHistory = {
             const history = {
                 switchHistory: [],
@@ -263,8 +267,14 @@
             window.abrHistory = {
                 byDownload: {},
                 overall: {},
-                abrStrategy: ''
+                abrStrategy: '',
+                resultsQoe: {}
             };
+
+            // todo qoeEvaluator
+            // let segmentDuration = 0.5;      // todo - get from dash
+            // let maxBitrateKbps = 1000;  // todo - get from dash
+            // const qoeEvaluatorRecording = new QoeEvaluator(segmentDuration, maxBitrateKbps);
 
             // Record the abrStrategy
             // window.abrHistory.abrStrategy = player.getSettings().streaming.abr.ABRStrategy;
@@ -313,7 +323,7 @@
                 console.log('');
                 console.log('>>> FRAGMENT_LOADING_COMPLETED: ' + segmentKey);
                 console.log(history);
-                // console.log(e.request);
+                console.log(e.request);
 
                 // update each segment's metrics value with the current cumulative metrics
                 let currentMetrics = {};
@@ -369,6 +379,10 @@
 
                 // constantly update overall metrics value with the latest cumulative metrics
                 window.abrHistory.overall = history;
+
+                // todo qoeEvaluator
+                // update qoeEvaluator with current segment's metrics
+                // qoeEvaluatorRecording.logSegmentMetrics(currentLatency);
             });
 
             function formatTimeString(date) {
@@ -444,7 +458,10 @@
 
             function checkStallResolution() {
                 if (stallingAt !== null) {
-                    history.stallDurationMs += (performance.now() - stallingAt);
+                    let duration = (performance.now() - stallingAt);
+                    history.stallDurationMs += duration;
+                    // todo qoeEvaluator
+                    // lastStallDurationMs = duration;
                     stallingAt = null;
                 }
             }
