@@ -48,9 +48,10 @@ function TgcHeuristicRuleClass() {
         let mediaType = rulesContext.getMediaInfo().type;
         let metrics = metricsModel.getMetricsFor(mediaType, true);
 
-        // Get current bitrate
         let streamController = StreamController(context).getInstance();
         let playbackController = PlaybackController(context).getInstance();
+
+        // Get current bitrate
         let abrController = rulesContext.getAbrController();
         let current = abrController.getQualityFor(mediaType, streamController.getActiveStreamInfo());
 
@@ -102,9 +103,14 @@ function TgcHeuristicRuleClass() {
         // for each option, compute reward and identify option with maxReward
         options.forEach(function (segments, optionIndex) {
             // create new QoeEvaluator object for each option
+            /* 
+             * NOT IN USE - first QoeEvaluator implementation
+             */
             // e.g. for each [200, 200, 200, 200, 200]
-            let maxBitrateKbps = bitrateList[bitrateList.length - 1].bandwidth / 1000.0;    // max bitrate level
-            let qoeEvaluator = new QoeEvaluator(segmentDuration, maxBitrateKbps);
+            // let maxBitrateKbps = bitrateList[bitrateList.length - 1].bandwidth / 1000.0;    // max bitrate level
+            // let qoeEvaluator = new QoeEvaluator(segmentDuration, maxBitrateKbps);
+            // let qoeEvaluator = new QoeEvaluator();
+            let qoeEvaluator = QoeEvaluator();
 
             // set up tmpBuffer to estimate rebuffering time for each segment
             let tmpBuffer = currentBufferLevel;
@@ -155,14 +161,17 @@ function TgcHeuristicRuleClass() {
                 currentLatency = currentLatency + segmentRebufferTime;
                 // console.log('currentLatency (aft): ' + currentLatency);
 
-                qoeEvaluator.logSegmentMetrics(segmentBitrateKbps, segmentRebufferTime, currentLatency);
+                // set to 0 to ignore playbackSpeed in Qoe calculations for now
+                let currentPlaybackSpeed = 0; // todo 
+                qoeEvaluator.logSegmentMetrics(segmentBitrateKbps, segmentRebufferTime, currentLatency, currentPlaybackSpeed);
             });
 
             // calculate potential reward for this option
-            let currentQoeMetrics = qoeEvaluator.getQoeMetrics();
-            // console.log('******* option: ' + segments + ' *********');
-            // console.log(currentQoeMetrics);
-            let reward = currentQoeMetrics.total;
+            let currentQoeInfo = qoeEvaluator.getPerSegmentQoeInfo();
+
+            console.log('******* option: ' + segments + ' *********');
+            console.log(currentQoeInfo);
+            let reward = currentQoeInfo.totalQoe;
             if (reward > maxReward) {
                 maxReward = reward;
                 bestOption = options[optionIndex];
