@@ -1,31 +1,21 @@
-// Use singleton design (hence function) rather than class declaration
-// To fit dash.js general design
-function QoeEvaluator() {
-    let instance,
-        voPerSegmentQoeInfo,
-        voPerChunkQoeInfo;
+class QoeEvaluator {
 
-    function setup() {
-        reset();
+    constructor() {
+        this.voPerSegmentQoeInfo = null;
+        this.voPerChunkQoeInfo = null;
+    }
 
-        let segmentDuration = 0.5;      // todo - obtain from dash
-        let chunkDuration = 0.03333333; // todo
-        let maxBitrateKbps = 1000;          // todo
-        let minBitrateKbps = 200;           // todo
-
+    setupPerSegmentQoe(segmentDuration, maxBitrateKbps, minBitrateKbps) {
         // Set up Per Segment QoeInfo
-        voPerSegmentQoeInfo = createQoeInfo('segment', segmentDuration, maxBitrateKbps, minBitrateKbps);
+        this.voPerSegmentQoeInfo = this.createQoeInfo('segment', segmentDuration, maxBitrateKbps, minBitrateKbps);
+    }
 
+    setupPerChunkQoe(chunkDuration, maxBitrateKbps, minBitrateKbps) {
         // Set up Per Chunk QoeInfo
-        voPerChunkQoeInfo = createQoeInfo('chunk', chunkDuration, maxBitrateKbps, minBitrateKbps);
+        this.voPerChunkQoeInfo = this.createQoeInfo('chunk', chunkDuration, maxBitrateKbps, minBitrateKbps);
     }
 
-    function reset() {
-        voPerSegmentQoeInfo = {};
-        voPerChunkQoeInfo = {};
-    }
-
-    function createQoeInfo(itemType, itemDuration, maxBitrateKbps, minBitrateKbps) {
+    createQoeInfo(itemType, itemDuration, maxBitrateKbps, minBitrateKbps) {
         /*
          * [Weights][Source: Abdelhak Bentaleb, 2020]
          * bitrateReward:           chunk or segment duration, e.g. 0.5s
@@ -63,15 +53,19 @@ function QoeEvaluator() {
         return qoeInfo;
     }
 
-    function logSegmentMetrics(segmentBitrate, segmentRebufferTime, currentLatency, currentPlaybackSpeed) {
-        updateMetricsForQoeInfo(segmentBitrate, segmentRebufferTime, currentLatency, currentPlaybackSpeed, voPerSegmentQoeInfo);
+    logSegmentMetrics(segmentBitrate, segmentRebufferTime, currentLatency, currentPlaybackSpeed) {
+        if (this.voPerSegmentQoeInfo) {
+            this.updateMetricsForQoeInfo(segmentBitrate, segmentRebufferTime, currentLatency, currentPlaybackSpeed, this.voPerSegmentQoeInfo);
+        }
     }
 
-    function logChunkMetrics(chunkBitrate, chunkRebufferTime, currentLatency, currentPlaybackSpeed) {
-        updateMetricsForQoeInfo(chunkBitrate, chunkRebufferTime, currentLatency, currentPlaybackSpeed, voPerChunkQoeInfo);
+    logChunkMetrics(chunkBitrate, chunkRebufferTime, currentLatency, currentPlaybackSpeed) {
+        if (this.voPerChunkQoeInfo) {
+            this.updateMetricsForQoeInfo(chunkBitrate, chunkRebufferTime, currentLatency, currentPlaybackSpeed, this.voPerChunkQoeInfo);
+        }
     }
 
-    function updateMetricsForQoeInfo(bitrate, rebufferTime, latency, playbackSpeed, qoeInfo) {
+    updateMetricsForQoeInfo(bitrate, rebufferTime, latency, playbackSpeed, qoeInfo) {
         // console.log('[QoeEvaluator] updateMetricsForQoeInfo - bitrate: ' + bitrate + ', rebufferTime: ' + rebufferTime + ', latency: ' + latency + ', playbackSpeed: ' + playbackSpeed + ', qoeInfo: ');
         // console.log(qoeInfo);
 
@@ -104,25 +98,14 @@ function QoeEvaluator() {
     }
 
     // Returns current Per Segment QoeInfo
-    function getPerSegmentQoeInfo() {
-        return voPerSegmentQoeInfo;
+    getPerSegmentQoe() {
+        return this.voPerSegmentQoeInfo;
     }
 
     // Returns current Per Chunk QoeInfo
-    function getPerChunkQoeInfo() {
-        return voPerChunkQoeInfo;
+    getPerChunkQoe() {
+        return this.voPerChunkQoeInfo;
     }
-
-    instance = {
-        logSegmentMetrics: logSegmentMetrics,
-        logChunkMetrics: logChunkMetrics,
-        getPerSegmentQoeInfo: getPerSegmentQoeInfo,
-        getPerChunkQoeInfo: getPerChunkQoeInfo
-    };
-
-    setup();
-
-    return instance;
 }
 
 class QoeInfo {

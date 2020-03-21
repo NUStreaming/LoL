@@ -86,12 +86,17 @@ function TgcHeuristicRuleClass() {
         /* ************************
          *    Main abr logic
          * ************************ */
-        
-        let segmentDuration = 0.5;      // todo - retrieve from dash
+
         // let futureSegmentCount = 5;     // lookahead window
         let futureSegmentCount = 2;     // lookahead window
         let maxReward = -100000000;
         let bestOption = [];
+
+        // Qoe stuff
+        let qoeEvaluator = new QoeEvaluator();
+        let segmentDuration = 0.5;                                                      // todo - retrieve from dash
+        let minBitrateKbps = bitrateList[0].bandwidth / 1000.0;                         // min bitrate level
+        let maxBitrateKbps = bitrateList[bitrateList.length - 1].bandwidth / 1000.0;    // max bitrate level
 
         // iterate all possible combinations of bitrates
         // (numBitrates^futureSegmentCount e.g. 3^5 = 243 options)
@@ -102,15 +107,8 @@ function TgcHeuristicRuleClass() {
 
         // for each option, compute reward and identify option with maxReward
         options.forEach(function (segments, optionIndex) {
-            // create new QoeEvaluator object for each option
-            /* 
-             * NOT IN USE - first QoeEvaluator implementation
-             */
-            // e.g. for each [200, 200, 200, 200, 200]
-            // let maxBitrateKbps = bitrateList[bitrateList.length - 1].bandwidth / 1000.0;    // max bitrate level
-            // let qoeEvaluator = new QoeEvaluator(segmentDuration, maxBitrateKbps);
-            // let qoeEvaluator = new QoeEvaluator();
-            let qoeEvaluator = QoeEvaluator();
+            // Set up new (per-segment) Qoe evaluation for each option
+            qoeEvaluator.setupPerSegmentQoe(segmentDuration, maxBitrateKbps, minBitrateKbps);
 
             // set up tmpBuffer to estimate rebuffering time for each segment
             let tmpBuffer = currentBufferLevel;
@@ -167,7 +165,7 @@ function TgcHeuristicRuleClass() {
             });
 
             // calculate potential reward for this option
-            let currentQoeInfo = qoeEvaluator.getPerSegmentQoeInfo();
+            let currentQoeInfo = qoeEvaluator.getPerSegmentQoe();
 
             console.log('******* option: ' + segments + ' *********');
             console.log(currentQoeInfo);
