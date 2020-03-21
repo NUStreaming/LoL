@@ -51,7 +51,7 @@ function DashManifestModel() {
         logger,
         errHandler,
         BASE64;
-    /* 
+    /*
      * maylim:
      * temp fix to bypass bug with prerequestSegments to get CTE working
      */
