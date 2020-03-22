@@ -8,6 +8,7 @@ function TgcHeuristicRuleClass() {
     let DashMetrics = factory.getSingletonFactoryByName('DashMetrics');
     let StreamController = factory.getSingletonFactoryByName('StreamController');
     let PlaybackController = factory.getSingletonFactoryByName('PlaybackController');
+
     let context = this.context;
     let instance;
 
@@ -16,26 +17,8 @@ function TgcHeuristicRuleClass() {
         BUFFER_STATE: 'BufferState'
     }
 
-    let currentQuality = -1;
-
-    // A cumulative moving average object
-    const CMA = () => {
-        let average = 0;
-        let count = 0;
-
-        return {
-            average(val) {
-                if (isNaN(val)) {
-                    return 0;
-                }
-                average = average + ((val - average) / ++count);
-                return average;
-            },
-            getAverage() {
-                return average;
-            }
-        }
-    }
+    // Store past throughputs to calculate harmonic mean for future bandwidth prediction
+    let pastThroughputs = [];
 
     function setup() {
     }
@@ -64,15 +47,16 @@ function TgcHeuristicRuleClass() {
         const streamInfo = rulesContext.getStreamInfo();
         const isDynamic = streamInfo && streamInfo.manifestInfo ? streamInfo.manifestInfo.isDynamic : null;
         const throughputHistory = abrController.getThroughputHistory();
-        // todo - verify this latency value vs. parseFloat(player.getCurrentLiveLatency(), 10);
-        // const latency = throughputHistory.getAverageLatency(mediaType);
         const latency = playbackController.getCurrentLiveLatency();
-        
+        const playbackRate = playbackController.getPlaybackRate();
+        const fragmentDuration = rulesContext.getRepresentationInfo().fragmentDuration;
+
         /*
-         * decide which throughput value to use
+         * Decide which throughput value to use
          */
         // const throughput = throughputHistory.getAverageThroughput(mediaType, isDynamic);
         const throughput = throughputHistory.getSafeAverageThroughput(mediaType, isDynamic);
+        pastThroughputs.push(throughput);
         console.log('[TgcHeuristicRule] throughput: ' + Math.round(throughput) + 'kbps');
 
         if (isNaN(throughput)) {
@@ -87,201 +71,154 @@ function TgcHeuristicRuleClass() {
          *    Main abr logic
          * ************************ */
 
-        // let futureSegmentCount = 5;     // lookahead window
-        let futureSegmentCount = 2;     // lookahead window
+        let futureSegmentCount = 5;     // lookahead window
+        // let futureSegmentCount = 2;     // lookahead window - for debug
         let maxReward = -100000000;
         let bestOption = [];
 
         // Qoe stuff
         let qoeEvaluator = new QoeEvaluator();
-        let segmentDuration = 0.5;                                                      // todo - retrieve from dash
+        let segmentDuration = fragmentDuration;
         let minBitrateKbps = bitrateList[0].bandwidth / 1000.0;                         // min bitrate level
         let maxBitrateKbps = bitrateList[bitrateList.length - 1].bandwidth / 1000.0;    // max bitrate level
 
-        // iterate all possible combinations of bitrates
+        // Iterate all possible combinations of bitrates
         // (numBitrates^futureSegmentCount e.g. 3^5 = 243 options)
         let qualityList = [];
         bitrateList.forEach(function (bitrateInfo, index) { qualityList.push(index); });
         let options = getPermutations(qualityList, futureSegmentCount);
         // console.log(options.length); // e.g. 243
 
-        // for each option, compute reward and identify option with maxReward
+        // For each option, compute reward and identify option with maxReward
         options.forEach(function (segments, optionIndex) {
+            // console.log('******* Option: ' + segments + ' *********');
+
             // Set up new (per-segment) Qoe evaluation for each option
             qoeEvaluator.setupPerSegmentQoe(segmentDuration, maxBitrateKbps, minBitrateKbps);
 
-            // set up tmpBuffer to estimate rebuffering time for each segment
+            // Set up tmpBuffer to simulate and estimate rebuffer time for each future segment
             let tmpBuffer = currentBufferLevel;
-            // console.log('latency: ' + latency);
             let currentLatency = latency;
+            let currentPlaybackSpeed = playbackRate;
 
-            // for each segment in lookahead window (window size: futureSegmentCount)
+            // Estimate futureBandwidth as harmonic mean of past X throughput values
+            let pastThroughputCount = 5;
+            let futureBandwidthKbps = calculateHarmonicMean(pastThroughputs.slice((pastThroughputCount * -1)));
+            console.log('Estimated futureBandwidthKbps: ' + futureBandwidthKbps);
+
+            // For each segment in lookahead window (window size: futureSegmentCount)
             segments.forEach(function (quality, segmentIndex) {
-                // metrics required for each segment
-                let segmentBitrateKbps, segmentRebufferTime, segmentRebufferTimecurrentLatency;
+                // Metrics required for each future segment
+                let segmentBitrateKbps = bitrateList[quality].bandwidth / 1000.0;
+                let segmentRebufferTime;
 
-                segmentBitrateKbps = bitrateList[quality].bandwidth / 1000.0;
+                // Estimate futureSegmentSize
+                let futureSegmentSizeKbits;
 
-                /*
-                 * Estimate downloadTime based on throughput and segmentSize
-                 * *** todo - naive throughput estimation for now: assume constant for future segments, update to harmonic mean or something ***
-                 * *** todo - naive segmentSize estimation for now: assume CBR-based, update to VBR-based segmentSize calculation ***
-                 */
-                let bandwidth = throughput;                                    // units: kbps
-                let segmentSize = segmentDuration * segmentBitrateKbps;        // units: s * kbps -> kbits
-                let downloadTime = segmentSize / bandwidth;                    // units: kbits / kbps -> s
+                // R-hat (Naive) //
+                futureSegmentSizeKbits = segmentDuration * segmentBitrateKbps;
+
+                // R-hat (Avg of past X segments) //
+                // Todo - Assumed same size for all future segments, to update?
+                // Todo - Omit anomaly sizes (e.g. those for the init segment)
+                // Todo - Estimated segment size should be post-proportioned according to quality level
+                // if (!metrics.RequestsQueue || !metrics.RequestsQueue.executedRequests) {
+                //     // No previous request data, use naive estimation for segment size
+                //     futureSegmentSizeKbits = segmentDuration * segmentBitrateKbps; 
+                // }
+                // else {
+                //     // Estimate futureSegmentSize based on past request data, i.e. previous segments downloaded
+                //     let pastSegmentSizeCount = Math.min(5, metrics.RequestsQueue.executedRequests.length);
+                //     let pastSegmentSizes = [];
+                //     for (let i = pastSegmentSizeCount; i > 0; i--) {
+                //         let index = metrics.RequestsQueue.executedRequests.length - i;
+                //         let pastRequest = metrics.RequestsQueue.executedRequests[index];
+                //         let segmentSizeBytes = pastRequest.bytesTotal;
+                //         pastSegmentSizes.push(segmentSizeBytes);
+                //     }
+                //     futureSegmentSizeKbits = (calculateArithmeticMean(pastSegmentSizes) * 8 / 1000.0);
+                //     console.log('pastSegmentSizes:');
+                //     console.log(pastSegmentSizes);
+                //     console.log('Estimated futureSegmentSize: ' + calculateArithmeticMean(pastSegmentSizes));
+                // }
+                // console.log('Estimated futureSegmentSizeKbits: ' + futureSegmentSizeKbits);
+
+                // Estimate downloadTime based on futureBandwidth and futureSegmentSize
+                let downloadTime = futureSegmentSizeKbits / futureBandwidthKbps;
+                // console.log('Estimated downloadTime: ' + downloadTime);
                 
                 // console.log('----------------------------------------------------');
-                // console.log('throughput: ' + throughput + ', segmentSize: ' + segmentSize + ', downloadTime: ' + downloadTime + ', tmpBuffer (bef): ' + tmpBuffer);
+                // console.log('futureBandwidthKbps: ' + futureBandwidthKbps + ', futureSegmentSizeKbits: ' + futureSegmentSizeKbits + ', downloadTime: ' + downloadTime + ', tmpBuffer (bef): ' + tmpBuffer);
                 // console.log('----------------------------------------------------');
 
                 /*
-                 * *** todo - buffer behaviour is segment-based.. update to chunk-based buffer download and playback ***
+                 * Determine segmentRebufferTime (if any) for this future segment
+                 * *** Todo - Buffer behaviour is segment-based, update to chunk-based buffer download and playback ***
                  */
-                if (downloadTime > tmpBuffer) { // rebuffer
+                if (downloadTime > tmpBuffer) { 
+                    // Rebuffer case
                     segmentRebufferTime = (downloadTime - tmpBuffer);
-                    // update buffer
+                    // Update buffer
                     tmpBuffer = segmentDuration;    // corrected, to correct further (see todo)
                 } else {
+                    // No rebuffer case
                     segmentRebufferTime = 0;
-                    // update buffer
+                    // Update buffer
                     tmpBuffer -= downloadTime;
                     tmpBuffer += segmentDuration;
                 }
 
-                /*
-                 * *** todo - latency calculation assumes playback rate = 1.. update to account for variable playback ***
-                 * e.g. catchUpTime = segmentDuration - (segmentDuration / playbackRate); 
-                 *      currentLatency = currentLatency - catchUpTime + segmentRebufferTime;
+                /* 
+                 * Determine playbackSpeed after the download of this future segment
+                 * *** Todo - Calculate playbackSpeed upon download and playback of this segment ***
                  */
-                // console.log('currentLatency (bef): ' + currentLatency);
-                // console.log('segmentRebufferTime: ' + segmentRebufferTime);
-                currentLatency = currentLatency + segmentRebufferTime;
-                // console.log('currentLatency (aft): ' + currentLatency);
+                let futurePlaybackSpeed = currentPlaybackSpeed;
 
-                // set to 0 to ignore playbackSpeed in Qoe calculations for now
-                let currentPlaybackSpeed = 0; // todo 
-                qoeEvaluator.logSegmentMetrics(segmentBitrateKbps, segmentRebufferTime, currentLatency, currentPlaybackSpeed);
+                /*
+                 * Determine latency after the download of this future segment
+                 */
+                let catchupDuration = segmentDuration - (segmentDuration / futurePlaybackSpeed);
+                let futureLatency = currentLatency + segmentRebufferTime - catchupDuration;
+                // console.log('currentLatency: ' + currentLatency);
+                // console.log('+ segmentRebufferTime: ' + segmentRebufferTime);
+                // console.log('- catchupDuration: ' + catchupDuration);
+                // console.log('= futureLatency: ' + futureLatency);
+
+                qoeEvaluator.logSegmentMetrics(segmentBitrateKbps, segmentRebufferTime, futureLatency, futurePlaybackSpeed);
             });
 
-            // calculate potential reward for this option
+            // Calculate potential reward for this option
             let currentQoeInfo = qoeEvaluator.getPerSegmentQoe();
+            // console.log('currentQoeInfo');
+            // console.log(currentQoeInfo);
+            // console.log('************ END OPTION ************')
 
-            console.log('******* option: ' + segments + ' *********');
-            console.log(currentQoeInfo);
             let reward = currentQoeInfo.totalQoe;
             if (reward > maxReward) {
                 maxReward = reward;
                 bestOption = options[optionIndex];
             }
-
-            /* 
-             * NOT IN USE -
-             * Implementation prior to QoeEvaluator!
-             */
-            // // let totalBitrate = 0;
-            // // let totalBitrateVariations = 0;
-            // let totalRebufferTime = 0;
-            // // let totalLatency = 0;
-            // let tmpBuffer = currentBufferLevel;
-            // let prevQuality = currentQuality;
-
-            // let averageBitrateCMA = CMA();
-            // let averageBitrateVariationsCMA = CMA();
-
-            // // for each segment in lookahead window (window size: futureSegmentCount)
-            // segments.forEach(function (quality, segmentIndex) {
-            //     let bitrate = bitrateList[quality].bandwidth;
-
-            //     // update reward factor - totalBitrate
-            //     // totalBitrate += bitrate;
-            //     averageBitrateCMA.average(bitrate / 1000); 
-
-            //     // update reward factor - totalBitrateVariations
-            //     if (prevQuality !== -1) {
-            //         let prevBitrate = bitrateList[prevQuality].bandwidth;
-            //         // totalBitrateVariations += Math.abs(bitrate - prevBitrate);
-            //         let bitrateVariation = Math.abs(bitrate - prevBitrate);
-            //         averageBitrateVariationsCMA.average(bitrateVariation / 1000); 
-            //     }
-
-            //     // estimate bandwidth based on throughput and segmentIndex
-            //     // naive one for now - assume throughput constant
-            //     // todo - use harmonic mean or something
-            //     let bandwidth = throughput;                             // units: kbps
-            //     let segmentSize = segmentDuration * bitrate / 1000.0;   // units: bps * s -> bits, divide by 1000 -> kbits
-            //     let downloadTime = segmentSize / bandwidth;             // units: kbits / kbps -> s
-                
-            //     // console.log('----------------------------------------------------');
-            //     // console.log('throughput: ' + throughput + ', segmentSize: ' + segmentSize + ', downloadTime: ' + downloadTime + ', tmpBuffer (bef): ' + tmpBuffer);
-
-            //     // update reward factor - totalRebufferTime
-            //     if (downloadTime > tmpBuffer) { // rebuffer
-            //         totalRebufferTime += (downloadTime - tmpBuffer);
-            //         tmpBuffer = 0;
-            //     } else {
-            //         tmpBuffer -= downloadTime;
-            //         tmpBuffer += segmentDuration;
-            //     }
-
-            //     // console.log('totalRebufferTime: ' + totalRebufferTime + ', tmpBuffer (aft): ' + tmpBuffer)
-
-            //     // update reward factor - totalLatency?
-            //     // todo
-
-            //     prevQuality = quality;
-            // })
-
-            // // calculate potential reward
-            // // note qoe units - 
-            // //   bitrate, bitrateVariations : kbps
-            // //   rebufferTime, latency      : s
-            // let wtBitrate = 1, wtBitrateVariations = 1, wtRebufferTime = 3000;
-            // // let reward = totalBitrate * wtBitrate - totalBitrateVariations * wtBitrateVariations - totalRebufferTime * wtRebufferTime;
-            // let reward = averageBitrateCMA.getAverage() * wtBitrate 
-            //     - averageBitrateVariationsCMA.getAverage() * wtBitrateVariations 
-            //     - totalRebufferTime * wtRebufferTime;
-
-            // // console.log('averageBitrate: ' + averageBitrateCMA.getAverage() + ', averageBrVariations: ' + averageBitrateVariationsCMA.getAverage() + ', totalRebuffer: ' + totalRebufferTime + ' (' + (totalRebufferTime * wtRebufferTime) + ')');
-            // // console.log('--- Option ' + optionIndex + ' -> segments: ' + segments + ', reward: ' + reward);
-            
-            // if (reward > maxReward) {
-            //     maxReward = reward;
-            //     bestOption = options[optionIndex];
-            // }
         });
 
         let nextQuality;
         if (bestOption.length < 1) { 
-            // if no bestOption was found, use quality best matched to throughput
+            // If no bestOption was found, use quality best matched to throughput
             nextQuality = abrController.getQualityForBitrate(mediaInfo, throughput, latency);
         } else {
             nextQuality = bestOption[0];
         }
 
-        currentQuality = nextQuality;
-
-        // let switchRequest = SwitchRequest(context).create();
         switchRequest.quality = nextQuality;
         switchRequest.reason = { throughput: throughput, latency: latency};
         switchRequest.priority = SwitchRequest.PRIORITY.STRONG;
 
-        // todo - check what is this for
+        // Todo - check what is this for
         scheduleController.setTimeToLoadDelay(0);
 
         // logger.debug('[' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
         console.log('[TgcHeuristicRule][' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
 
         return switchRequest;
-
-
-        // For debugging
-        // Ask to switch to the lowest bitrate
-        // let switchRequest = SwitchRequest(context).create();
-        // switchRequest.quality = 0;
-        // switchRequest.reason = 'Always switching to the lowest bitrate';
-        // switchRequest.priority = SwitchRequest.PRIORITY.STRONG;
-        // return switchRequest;
     }
 
     function getPermutations(list, length) {
@@ -309,6 +246,24 @@ function TgcHeuristicRuleClass() {
         // Start with size 1 because of initial values
         return generate(perm, length, 1);
     };
+
+    function calculateArithmeticMean(arrOfValues) {
+        let sum = 0;
+        arrOfValues.forEach(function (value, index) {
+            sum += value;
+        });
+        // Return arithmetic mean
+        return (sum / arrOfValues.length);
+    }
+
+    function calculateHarmonicMean(arrOfValues) {
+        let sumOfReciprocals = 0;
+        arrOfValues.forEach(function (value, index) {
+            sumOfReciprocals += (1.0 / value);
+        });
+        // Return harmonic mean
+        return (1.0 / (sumOfReciprocals / arrOfValues.length));
+    }
 
     instance = {
         getMaxIndex: getMaxIndex
