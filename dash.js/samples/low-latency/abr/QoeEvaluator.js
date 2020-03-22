@@ -106,7 +106,7 @@ class QoeEvaluator {
         }
 
         // Update: playbackSpeed Weighted Sum value
-        qoeInfo.playbackSpeedWSum += (qoeInfo.weights.playbackSpeedPenalty * playbackSpeed);
+        qoeInfo.playbackSpeedWSum += (qoeInfo.weights.playbackSpeedPenalty * Math.abs(1 - playbackSpeed));
 
         // Update: Total Qoe value
         qoeInfo.totalQoe = qoeInfo.bitrateWSum - qoeInfo.bitrateSwitchWSum - qoeInfo.rebufferWSum - qoeInfo.latencyWSum - qoeInfo.playbackSpeedWSum;
