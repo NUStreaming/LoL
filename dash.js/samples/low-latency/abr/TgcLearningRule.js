@@ -59,7 +59,7 @@ function TgcLearningRuleClass() {
         }
 
         // select next quality using SOM
-        switchRequest.quality = somController.getQualityUsingSom(mediaInfo,throughput*1000,latency,currentBufferLevel);
+        switchRequest.quality = somController.getQualityUsingSom(mediaInfo,throughput*1000,latency/1000,currentBufferLevel);
         switchRequest.reason = { throughput: throughput, latency: latency};
         switchRequest.priority = SwitchRequest.PRIORITY.STRONG;
 
@@ -99,7 +99,7 @@ class SOMAbrController{
             const bitrateList = mediaInfo.bitrateList;
             let bitrateVector=[];
             bitrateList.forEach(element => {
-                bitrateVector.push(element.bandwidth);    
+                bitrateVector.push(element.bandwidth);   
             });
             this.bitrateNormalizationFactor=this.getMagnitude(bitrateVector);
             console.log("throughput normalization factor is "+this.bitrateNormalizationFactor);
@@ -121,6 +121,19 @@ class SOMAbrController{
         return this.somBitrateNeurons;
     }
 
+    getMaxThroughput(){
+        let maxThroughput=0;
+        if (this.somBitrateNeurons){
+            for(let i=0;i<this.somBitrateNeurons.length;i++){
+                let n=this.somBitrateNeurons[i];
+                if (n.state.throughput>maxThroughput){
+                    maxThroughput=n.state.throughput;
+                }
+            }
+        } 
+        return maxThroughput;
+    }
+
     getMagnitude(w){
         return w
             .map((x) => (x**2)) // square each element
@@ -130,42 +143,58 @@ class SOMAbrController{
 
     getDistance(a, b, w) {
         return a
-            .map((x, i) => (w[i]*(x-b[i])) ** 2) // square the difference*w
+            .map((x, i) => (w[i] * (x-b[i]) ** 2)) // square the difference*w
             .reduce((sum, now) => sum + now) // sum
             ** (1/2) // square root
     }
 
-    updateNeuronState(neuron, x){
+    getNeuronDistance(a, b) {
+        let aState=[a.state.throughput,a.state.latency, a.state.buffer];
+        let bState=[b.state.throughput,b.state.latency, b.state.buffer];
+        return this.getDistance(aState,bState,[1,1,1]);
+    }
+
+    updateNeuronState(neuron, x, neighbourHood){
         let state=neuron.state;
-        let w=0.1; // learning rate
-        state.throughput=state.throughput+(x[0]-state.throughput)*w
-        state.latency=state.latency+(x[1]-state.latency)*w
-        state.buffer=state.buffer+(x[2]-state.buffer)*w
+        let w=[0.01,0.01,0.01]; // learning rate
+        // console.log("before update: neuron=",neuron.qualityIndex," throughput=",state.throughput," latency=",state.latency," buffer=",state.buffer)
+        state.throughput=state.throughput+(x[0]-state.throughput)*w[0]*neighbourHood;
+        state.latency=state.latency+(x[1]-state.latency)*w[1]*neighbourHood;
+        state.buffer=state.buffer+(x[2]-state.buffer)*w[2]*neighbourHood;
+        console.log("after update: neuron=",neuron.qualityIndex," throughput=",state.throughput," latency=",state.latency," buffer=",state.buffer)
     }
 
     getQualityUsingSom(mediaInfo, throughput, latency, bufferSize){
         let somElements=this.getSomBitrateNeurons(mediaInfo);
         // normalize throughput
         throughput=throughput/this.bitrateNormalizationFactor;
+        // saturate values higher than 1
+        if (throughput>1) throughput=this.getMaxThroughput();
+        console.log("getQuality called throughput="+throughput+" latency="+latency+" bufferSize="+bufferSize);
 
         let minDistance=null;
         let minIndex=null;
-        let neuronTobeUpdated=null;
+        let winnerNeuron=null;
         for (let i =0; i< somElements.length ; i++) {
             let somNeuron=somElements[i];
             let somNeuronState=somNeuron.state;
             let somData=[somNeuronState.throughput,somNeuronState.latency,somNeuronState.buffer];
-            let distance=this.getDistance(somData,[throughput,latency,bufferSize],[0.1,0.2,0.1]);
+            // give 0 as the targetLatency to find the optimum neuron
+            let distance=this.getDistance(somData,[throughput,0,bufferSize],[0.2,0.2,0.1]);
             if (minDistance==null || distance<minDistance){
                 minDistance=distance;
                 minIndex=somNeuron.qualityIndex;
-                neuronTobeUpdated=somNeuron;
+                winnerNeuron=somNeuron;
             }
             console.log("distance=",distance);
         }
 
-        if (neuronTobeUpdated!=null){
-            this.updateNeuronState(neuronTobeUpdated,[throughput,latency,bufferSize]);
+        // update all neurons
+        for (let i =0; i< somElements.length ; i++) {
+            let somNeuron=somElements[i];
+            let sigma=0.1;
+            let neighbourHood=Math.exp(-1*this.getNeuronDistance(somNeuron,winnerNeuron)/(2*sigma**2));
+            this.updateNeuronState(somNeuron,[throughput,latency,bufferSize], neighbourHood);
         }
         return minIndex;
     }
