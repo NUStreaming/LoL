@@ -15,7 +15,7 @@ class QoeEvaluator {
         this.voPerChunkQoeInfo = this.createQoeInfo('chunk', chunkDuration, maxBitrateKbps, minBitrateKbps);
     }
 
-    createQoeInfo(itemType, itemDuration, maxBitrateKbps, minBitrateKbps) {
+    createQoeInfo(fragmentType, fragmentDuration, maxBitrateKbps, minBitrateKbps) {
         /*
          * [Weights][Source: Abdelhak Bentaleb, 2020]
          * bitrateReward:           chunk or segment duration, e.g. 0.5s
@@ -27,11 +27,11 @@ class QoeEvaluator {
 
         // Create new QoeInfo object
         let qoeInfo = new QoeInfo();
-        qoeInfo.type = itemType;
+        qoeInfo.type = fragmentType;
 
         // Set weight: bitrateReward
-        if (!itemDuration) qoeInfo.weights.bitrateReward = 1;      // set some safe value, else consider throwing error
-        else qoeInfo.weights.bitrateReward = itemDuration;
+        if (!fragmentDuration) qoeInfo.weights.bitrateReward = 1;      // set some safe value, else consider throwing error
+        else qoeInfo.weights.bitrateReward = fragmentDuration;
 
         // Set weight: bitrateSwitchPenalty
         // qoeInfo.weights.bitrateSwitchPenalty = 0.02;
