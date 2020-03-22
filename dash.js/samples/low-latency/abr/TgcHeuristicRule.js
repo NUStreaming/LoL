@@ -57,7 +57,7 @@ function TgcHeuristicRuleClass() {
         // const throughput = throughputHistory.getAverageThroughput(mediaType, isDynamic);
         const throughput = throughputHistory.getSafeAverageThroughput(mediaType, isDynamic);
         pastThroughputs.push(throughput);
-        console.log('[TgcHeuristicRule] throughput: ' + Math.round(throughput) + 'kbps');
+        // console.log('[TgcHeuristicRule] throughput: ' + Math.round(throughput) + 'kbps');
 
         if (isNaN(throughput)) {
             return switchRequest;
@@ -71,8 +71,8 @@ function TgcHeuristicRuleClass() {
          *    Main abr logic
          * ************************ */
 
-        let futureSegmentCount = 5;     // lookahead window
-        // let futureSegmentCount = 2;     // lookahead window - for debug
+        // let futureSegmentCount = 5;     // lookahead window
+        let futureSegmentCount = 3;     // lookahead window - small
         let maxReward = -100000000;
         let bestOption = [];
 
@@ -91,23 +91,26 @@ function TgcHeuristicRuleClass() {
 
         // For each option, compute reward and identify option with maxReward
         options.forEach(function (segments, optionIndex) {
-            // console.log('******* Option: ' + segments + ' *********');
+            console.log('------------- Option: ' + segments + ' -------------');
 
             // Set up new (per-segment) Qoe evaluation for each option
             qoeEvaluator.setupPerSegmentQoe(segmentDuration, maxBitrateKbps, minBitrateKbps);
+            // qoeEvaluator.setupPerChunkQoe((0.5/15), maxBitrateKbps, minBitrateKbps);
 
             // Set up tmpBuffer to simulate and estimate rebuffer time for each future segment
             let tmpBuffer = currentBufferLevel;
-            let currentLatency = latency;
             let currentPlaybackSpeed = playbackRate;
+            let currentLatency = 0; // in case latency = NaN, set latency to 0 to ignore this factor
+            if (latency) currentLatency = latency;
 
             // Estimate futureBandwidth as harmonic mean of past X throughput values
             let pastThroughputCount = 5;
             let futureBandwidthKbps = calculateHarmonicMean(pastThroughputs.slice((pastThroughputCount * -1)));
-            console.log('Estimated futureBandwidthKbps: ' + futureBandwidthKbps);
+            // console.log('Estimated futureBandwidthKbps: ' + futureBandwidthKbps);
 
             // For each segment in lookahead window (window size: futureSegmentCount)
             segments.forEach(function (quality, segmentIndex) {
+                // console.log('### Segment, quality: ' + quality + ' ###');
                 // Metrics required for each future segment
                 let segmentBitrateKbps = bitrateList[quality].bandwidth / 1000.0;
                 let segmentRebufferTime;
@@ -173,25 +176,26 @@ function TgcHeuristicRuleClass() {
                  * *** Todo - Calculate playbackSpeed upon download and playback of this segment ***
                  */
                 let futurePlaybackSpeed = currentPlaybackSpeed;
+                // console.log('futurePlaybackSpeed: ' + futurePlaybackSpeed);
 
                 /*
                  * Determine latency after the download of this future segment
                  */
                 let catchupDuration = segmentDuration - (segmentDuration / futurePlaybackSpeed);
                 let futureLatency = currentLatency + segmentRebufferTime - catchupDuration;
-                // console.log('currentLatency: ' + currentLatency);
-                // console.log('+ segmentRebufferTime: ' + segmentRebufferTime);
-                // console.log('- catchupDuration: ' + catchupDuration);
-                // console.log('= futureLatency: ' + futureLatency);
+                // console.log('currentLatency: ' + currentLatency + ', segmentRebufferTime: ' + segmentRebufferTime + ', catchupDuration: ' + catchupDuration + ', futureLatency: ' + futureLatency);
 
                 qoeEvaluator.logSegmentMetrics(segmentBitrateKbps, segmentRebufferTime, futureLatency, futurePlaybackSpeed);
+
+                // Update values for next segment loop
+                currentLatency = futureLatency;
+                currentPlaybackSpeed = futurePlaybackSpeed;
             });
 
             // Calculate potential reward for this option
             let currentQoeInfo = qoeEvaluator.getPerSegmentQoe();
-            // console.log('currentQoeInfo');
-            // console.log(currentQoeInfo);
-            // console.log('************ END OPTION ************')
+            // console.log('### QoeInfo ###');
+            console.log(currentQoeInfo);
 
             let reward = currentQoeInfo.totalQoe;
             if (reward > maxReward) {

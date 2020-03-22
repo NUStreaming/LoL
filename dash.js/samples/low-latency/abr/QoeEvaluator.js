@@ -1,3 +1,18 @@
+/*
+ * [Usage]
+ * 1. Setup -
+ *      let qoeEvaluator = new QoeEvaluator();
+ *      qoeEvaluator.setupPerSegmentQoe(segmentDurationSec, maxBitrateKbps, minBitrateKbps);
+ * 2. For each segment -
+ *      qoeEvaluator.logSegmentMetrics(segmentBitrateKbps, segmentRebufferTimeSec, latencySec, playbackSpeed);
+ * 3. To obtain the current Qoe value -
+ *      let currentPerSegmentQoe = qoeEvaluator.getPerSegmentQoe(); // returns QoeInfo object
+ *
+ * [Note]
+ *  - Same usage for Per Chunk Qoe except to update to the corresponding PerChunk methods
+ *  - Each QoeEvaluator instance can maintain one PerSegmentQoe and one PerChunkQoe simultaneously, though extensible
+ */
+
 class QoeEvaluator {
 
     constructor() {
@@ -17,7 +32,7 @@ class QoeEvaluator {
 
     createQoeInfo(fragmentType, fragmentDuration, maxBitrateKbps, minBitrateKbps) {
         /*
-         * [Weights][Source: Abdelhak Bentaleb, 2020]
+         * [Weights][Source: Abdelhak Bentaleb, 2020 (last updated: 20 Mar 2020)]
          * bitrateReward:           chunk or segment duration, e.g. 0.5s
          * bitrateSwitchPenalty:    0.02s or 1s if the bitrate switch is too important
          * rebufferPenalty:         max encoding bitrate, e.g. 1000kbps
@@ -55,18 +70,18 @@ class QoeEvaluator {
 
     logSegmentMetrics(segmentBitrate, segmentRebufferTime, currentLatency, currentPlaybackSpeed) {
         if (this.voPerSegmentQoeInfo) {
-            this.updateMetricsForQoeInfo(segmentBitrate, segmentRebufferTime, currentLatency, currentPlaybackSpeed, this.voPerSegmentQoeInfo);
+            this.logMetricsInQoeInfo(segmentBitrate, segmentRebufferTime, currentLatency, currentPlaybackSpeed, this.voPerSegmentQoeInfo);
         }
     }
 
     logChunkMetrics(chunkBitrate, chunkRebufferTime, currentLatency, currentPlaybackSpeed) {
         if (this.voPerChunkQoeInfo) {
-            this.updateMetricsForQoeInfo(chunkBitrate, chunkRebufferTime, currentLatency, currentPlaybackSpeed, this.voPerChunkQoeInfo);
+            this.logMetricsInQoeInfo(chunkBitrate, chunkRebufferTime, currentLatency, currentPlaybackSpeed, this.voPerChunkQoeInfo);
         }
     }
 
-    updateMetricsForQoeInfo(bitrate, rebufferTime, latency, playbackSpeed, qoeInfo) {
-        // console.log('[QoeEvaluator] updateMetricsForQoeInfo - bitrate: ' + bitrate + ', rebufferTime: ' + rebufferTime + ', latency: ' + latency + ', playbackSpeed: ' + playbackSpeed + ', qoeInfo: ');
+    logMetricsInQoeInfo(bitrate, rebufferTime, latency, playbackSpeed, qoeInfo) {
+        // console.log('[QoeEvaluator] logMetricsInQoeInfo - bitrate: ' + bitrate + ', rebufferTime: ' + rebufferTime + ', latency: ' + latency + ', playbackSpeed: ' + playbackSpeed + ', qoeInfo: ');
         // console.log(qoeInfo);
 
         // Update: bitrate Weighted Cumulative value
