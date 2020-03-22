@@ -84,32 +84,32 @@ class QoeEvaluator {
         // console.log('[QoeEvaluator] logMetricsInQoeInfo - bitrate: ' + bitrate + ', rebufferTime: ' + rebufferTime + ', latency: ' + latency + ', playbackSpeed: ' + playbackSpeed + ', qoeInfo: ');
         // console.log(qoeInfo);
 
-        // Update: bitrate Weighted Cumulative value
-        qoeInfo.bitrateWC += (qoeInfo.weights.bitrateReward * bitrate);
+        // Update: bitrate Weighted Sum value
+        qoeInfo.bitrateWSum += (qoeInfo.weights.bitrateReward * bitrate);
 
-        // Update: bitrateSwitch Weighted Cumulative value
+        // Update: bitrateSwitch Weighted Sum value
         if (qoeInfo.lastBitrate) {
-            qoeInfo.bitrateSwitchWC += (qoeInfo.weights.bitrateSwitchPenalty * Math.abs(bitrate - qoeInfo.lastBitrate));
+            qoeInfo.bitrateSwitchWSum += (qoeInfo.weights.bitrateSwitchPenalty * Math.abs(bitrate - qoeInfo.lastBitrate));
         }
         qoeInfo.lastBitrate = bitrate;
 
-        // Update: rebuffer Weighted Cumulative value
-        qoeInfo.rebufferWC += (qoeInfo.weights.rebufferPenalty * rebufferTime);
+        // Update: rebuffer Weighted Sum value
+        qoeInfo.rebufferWSum += (qoeInfo.weights.rebufferPenalty * rebufferTime);
 
-        // Update: latency Weighted Cumulative value
+        // Update: latency Weighted Sum value
         for (let i = 0; i < qoeInfo.weights.latencyPenalty.length; i++) {
             let latencyRange = qoeInfo.weights.latencyPenalty[i];
             if (latency <= latencyRange.threshold) {
-                qoeInfo.latencyWC += (latencyRange.penalty * latency);
+                qoeInfo.latencyWSum += (latencyRange.penalty * latency);
                 break;
             }
         }
 
-        // Update: playbackSpeed Weighted Cumulative value
-        qoeInfo.playbackSpeedWC += (qoeInfo.weights.playbackSpeedPenalty * playbackSpeed);
+        // Update: playbackSpeed Weighted Sum value
+        qoeInfo.playbackSpeedWSum += (qoeInfo.weights.playbackSpeedPenalty * playbackSpeed);
 
         // Update: Total Qoe value
-        qoeInfo.totalQoe = qoeInfo.bitrateWC - qoeInfo.bitrateSwitchWC - qoeInfo.rebufferWC - qoeInfo.latencyWC - qoeInfo.playbackSpeedWC;
+        qoeInfo.totalQoe = qoeInfo.bitrateWSum - qoeInfo.bitrateSwitchWSum - qoeInfo.rebufferWSum - qoeInfo.latencyWSum - qoeInfo.playbackSpeedWSum;
     }
 
     // Returns current Per Segment QoeInfo
@@ -129,7 +129,7 @@ class QoeInfo {
         // Type 'segment' or 'chunk'
         this.type = null;
 
-        // Store lastBitrate for calculation of bitrateSwitchWC
+        // Store lastBitrate for calculation of bitrateSwitchWSum
         this.lastBitrate = null;
 
         // Weights for each Qoe factor
@@ -140,14 +140,14 @@ class QoeInfo {
         this.weights.latencyPenalty = null;
         this.weights.playbackSpeedPenalty = null;
 
-        // Weighted Cumulative for each Qoe factor
-        this.bitrateWC = 0;           // kbps
-        this.bitrateSwitchWC = 0;     // kbps
-        this.rebufferWC = 0;          // seconds
-        this.latencyWC = 0;           // seconds
-        this.playbackSpeedWC = 0;     // e.g. 0.95, 1.0, 1.05
+        // Weighted Sum for each Qoe factor
+        this.bitrateWSum = 0;           // kbps
+        this.bitrateSwitchWSum = 0;     // kbps
+        this.rebufferWSum = 0;          // seconds
+        this.latencyWSum = 0;           // seconds
+        this.playbackSpeedWSum = 0;     // e.g. 0.95, 1.0, 1.05
 
-        // Store total Qoe value based on current WC values
+        // Store total Qoe value based on current Weighted Sum values
         this.totalQoe = 0;
     }
 
