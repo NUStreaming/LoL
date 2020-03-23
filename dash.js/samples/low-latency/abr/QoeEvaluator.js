@@ -5,7 +5,7 @@
  * 1. Setup -
  *      let qoeEvaluator = new QoeEvaluator();
  *      qoeEvaluator.setupPerSegmentQoe(segmentDurationSec, maxBitrateKbps, minBitrateKbps);
- * 2. For each segment -
+ * 2. For each segment, log the metrics -
  *      qoeEvaluator.logSegmentMetrics(segmentBitrateKbps, segmentRebufferTimeSec, latencySec, playbackSpeed);
  * 3. To obtain the current Qoe value -
  *      let currentPerSegmentQoe = qoeEvaluator.getPerSegmentQoe(); // returns QoeInfo object
