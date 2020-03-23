@@ -1,4 +1,6 @@
 /*
+ * May Lim | National University of Singapore | maylim17@u.nus.edu
+ *
  * [Usage]
  * 1. Setup -
  *      let qoeEvaluator = new QoeEvaluator();
