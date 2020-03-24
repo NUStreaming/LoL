@@ -7,6 +7,7 @@ function TgcLearningRuleClass() {
     let MetricsModel = factory.getSingletonFactoryByName('MetricsModel');
     let DashMetrics = factory.getSingletonFactoryByName('DashMetrics');
     let StreamController = factory.getSingletonFactoryByName('StreamController');
+    let PlaybackController = factory.getSingletonFactoryByName('PlaybackController');
     let context = this.context;
     let instance;
 
@@ -16,6 +17,7 @@ function TgcLearningRuleClass() {
     }
 
     const somController = new SOMAbrController();
+    let qoeEvaluator = new QoeEvaluator();
 
     function setup() {
     }
@@ -41,7 +43,13 @@ function TgcLearningRuleClass() {
         const streamInfo = rulesContext.getStreamInfo();
         const isDynamic = streamInfo && streamInfo.manifestInfo ? streamInfo.manifestInfo.isDynamic : null;
         const throughputHistory = abrController.getThroughputHistory();
-        const latency = throughputHistory.getAverageLatency(mediaType);
+
+        // latency
+        //const latency = throughputHistory.getAverageLatency(mediaType);
+        let playbackController = PlaybackController(context).getInstance();
+        let latency = playbackController.getCurrentLiveLatency();
+        if (!latency) latency=0;
+        const playbackRate = playbackController.getPlaybackRate();
         
         /*
          * decide which throughput value to use
@@ -58,8 +66,30 @@ function TgcLearningRuleClass() {
             return switchRequest;
         }
 
+        // QoE parameters
+        let bitrateList=mediaInfo.bitrateList;
+        let segmentDuration = rulesContext.getRepresentationInfo().fragmentDuration;
+        let minBitrateKbps = bitrateList[0].bandwidth / 1000.0;                         // min bitrate level
+        let maxBitrateKbps = bitrateList[bitrateList.length - 1].bandwidth / 1000.0;    // max bitrate level
+        for (let i=0;i<bitrateList.length;i++){
+            let b=bitrateList[i].bandwidth/1000.0;
+            if (b>maxBitrateKbps) maxBitrateKbps=b;
+            else if (b<minBitrateKbps) minBitrateKbps=b;
+        }
+
+        let currentBitrate=bitrateList[current].bandwidth;
+        let currentBitrateKbps= currentBitrate / 1000.0;
+        let httpRequest = dashMetrics.getCurrentHttpRequest(mediaType, true);
+        let lastFragmentDownloadTime = (httpRequest.tresponse.getTime() - httpRequest.trequest.getTime())/1000;
+        let segmentRebufferTime = lastFragmentDownloadTime>segmentDuration?lastFragmentDownloadTime-segmentDuration:0;
+        qoeEvaluator.setupPerSegmentQoe(segmentDuration, maxBitrateKbps, minBitrateKbps);
+        qoeEvaluator.logSegmentMetrics(currentBitrateKbps, segmentRebufferTime, latency, playbackRate);
+        let currentQoeInfo = qoeEvaluator.getPerSegmentQoe();
+        let normalizedQoEInverse=  currentQoeInfo.totalQoe / currentBitrateKbps;
+        console.log("QoE: ",normalizedQoEInverse);
+
         // select next quality using SOM
-        switchRequest.quality = somController.getQualityUsingSom(mediaInfo,throughput*1000,latency/1000,currentBufferLevel);
+        switchRequest.quality = somController.getQualityUsingSom(mediaInfo,throughput*1000,latency/1000,currentBufferLevel,currentBitrate,normalizedQoEInverse);
         switchRequest.reason = { throughput: throughput, latency: latency};
         switchRequest.priority = SwitchRequest.PRIORITY.STRONG;
 
@@ -112,7 +142,9 @@ class SOMAbrController{
                         // normalize throughputs
                         throughput: bitrateList[i].bandwidth/this.bitrateNormalizationFactor,
                         latency: 0,
-                        buffer: 0
+                        buffer: 0,
+                        previousBitrate: bitrateList[i].bandwidth/this.bitrateNormalizationFactor,
+                        QoE: 0
                     }
                 }
                 this.somBitrateNeurons.push(neuron);
@@ -149,28 +181,33 @@ class SOMAbrController{
     }
 
     getNeuronDistance(a, b) {
-        let aState=[a.state.throughput,a.state.latency, a.state.buffer];
-        let bState=[b.state.throughput,b.state.latency, b.state.buffer];
-        return this.getDistance(aState,bState,[1,1,1]);
+        let aState=[a.state.throughput,a.state.latency, a.state.buffer, a.state.previousBitrate, a.state.QoE];
+        let bState=[b.state.throughput,b.state.latency, b.state.buffer, b.state.previousBitrate, b.state.QoE];
+        return this.getDistance(aState,bState,[1,1,1,1,1]);
     }
 
     updateNeuronState(neuron, x, neighbourHood){
         let state=neuron.state;
-        let w=[0.01,0.01,0.01]; // learning rate
+        let w=[0.01,0.01,0.01,0.01,0.01]; // learning rate
         // console.log("before update: neuron=",neuron.qualityIndex," throughput=",state.throughput," latency=",state.latency," buffer=",state.buffer)
         state.throughput=state.throughput+(x[0]-state.throughput)*w[0]*neighbourHood;
         state.latency=state.latency+(x[1]-state.latency)*w[1]*neighbourHood;
         state.buffer=state.buffer+(x[2]-state.buffer)*w[2]*neighbourHood;
-        console.log("after update: neuron=",neuron.qualityIndex," throughput=",state.throughput," latency=",state.latency," buffer=",state.buffer)
+        state.previousBitrate=state.previousBitrate+(x[3]-state.previousBitrate)*w[3]*neighbourHood;
+        state.QoE=state.QoE+(x[4]-state.QoE)*w[4]*neighbourHood;
+        console.log("after update: neuron=",neuron.qualityIndex,"throughput=",state.throughput,
+                    "latency=",state.latency," buffer=",state.buffer,
+                    "previousBitrate=",state.previousBitrate,"QoE=",state.QoE);
     }
 
-    getQualityUsingSom(mediaInfo, throughput, latency, bufferSize){
+    getQualityUsingSom(mediaInfo, throughput, latency, bufferSize, currentBitrate,QoE){
         let somElements=this.getSomBitrateNeurons(mediaInfo);
         // normalize throughput
         throughput=throughput/this.bitrateNormalizationFactor;
         // saturate values higher than 1
         if (throughput>1) throughput=this.getMaxThroughput();
-        console.log("getQuality called throughput="+throughput+" latency="+latency+" bufferSize="+bufferSize);
+        currentBitrate=currentBitrate/this.bitrateNormalizationFactor;
+        console.log("getQuality called throughput="+throughput+" latency="+latency+" bufferSize="+bufferSize," currentNBitrate=",currentBitrate," QoE=",QoE);
 
         let minDistance=null;
         let minIndex=null;
@@ -178,9 +215,15 @@ class SOMAbrController{
         for (let i =0; i< somElements.length ; i++) {
             let somNeuron=somElements[i];
             let somNeuronState=somNeuron.state;
-            let somData=[somNeuronState.throughput,somNeuronState.latency,somNeuronState.buffer];
+            let somData=[somNeuronState.throughput,
+                somNeuronState.latency,
+                somNeuronState.buffer,
+                somNeuronState.previousBitrate,
+                somNeuronState.QoE];
             // give 0 as the targetLatency to find the optimum neuron
-            let distance=this.getDistance(somData,[throughput,0,bufferSize],[0.2,0.2,0.1]);
+            // maximizing QoE = minimizing 1/QoE (~ 0)
+            let weights=[0.4, 0.4, 0.05, 0.05, 0.4]; // throughput, latency, buffer, previousBitrate, QoE 
+            let distance=this.getDistance(somData,[throughput,0,bufferSize,currentBitrate,0],weights);
             if (minDistance==null || distance<minDistance){
                 minDistance=distance;
                 minIndex=somNeuron.qualityIndex;
@@ -194,7 +237,7 @@ class SOMAbrController{
             let somNeuron=somElements[i];
             let sigma=0.1;
             let neighbourHood=Math.exp(-1*this.getNeuronDistance(somNeuron,winnerNeuron)/(2*sigma**2));
-            this.updateNeuronState(somNeuron,[throughput,latency,bufferSize], neighbourHood);
+            this.updateNeuronState(somNeuron,[throughput,latency,bufferSize,currentBitrate,QoE], neighbourHood);
         }
         return minIndex;
     }
