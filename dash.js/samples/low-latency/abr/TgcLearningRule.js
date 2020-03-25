@@ -85,7 +85,8 @@ function TgcLearningRuleClass() {
         qoeEvaluator.setupPerSegmentQoe(segmentDuration, maxBitrateKbps, minBitrateKbps);
         qoeEvaluator.logSegmentMetrics(currentBitrateKbps, segmentRebufferTime, latency, playbackRate);
         let currentQoeInfo = qoeEvaluator.getPerSegmentQoe();
-        let normalizedQoEInverse=  currentQoeInfo.totalQoe / currentBitrateKbps;
+        // let normalizedQoEInverse=  currentQoeInfo.totalQoe / currentBitrateKbps;
+        let normalizedQoEInverse= currentQoeInfo.totalQoe>0 ? 1 / currentQoeInfo.totalQoe : 1;
         console.log("QoE: ",normalizedQoEInverse);
 
         // select next quality using SOM
