@@ -627,33 +627,69 @@ function PlaybackController() {
             Math.abs(getCurrentLiveLatency() - mediaPlayerModel.getLiveDelay()) > settings.get().streaming.liveCatchUpMinDrift;
     }
 
+    // TGC addition to allow estimatation of future playback rate
+    function tryNeedToCatchUp(liveCatchUpPlaybackRate, currentLiveLatency, liveDelay, liveCatchUpMinDrift) {
+        return liveCatchUpPlaybackRate > 0 && getTime() > 0 &&
+            Math.abs(currentLiveLatency - liveDelay) > liveCatchUpMinDrift;
+    }
+
+    // Original implementation
+    // function startPlaybackCatchUp() {
+    //     if (videoModel) {
+    //         const cpr = settings.get().streaming.liveCatchUpPlaybackRate;
+    //         const liveDelay = mediaPlayerModel.getLiveDelay();
+    //         const deltaLatency = getCurrentLiveLatency() - liveDelay;
+    //         const d = deltaLatency * 5;
+    //         // Playback rate must be between (1 - cpr) - (1 + cpr)
+    //         // ex: if cpr is 0.5, it can have values between 0.5 - 1.5
+    //         const s = (cpr * 2) / (1 + Math.pow(Math.E, -d));
+    //         let newRate = (1 - cpr) + s;
+    //         // take into account situations in which there are buffer stalls,
+    //         // in which increasing playbackRate to reach target latency will
+    //         // just cause more and more stall situations
+    //         if (playbackStalled) {
+    //             const bufferLevel = getBufferLevel();
+    //             if (bufferLevel > liveDelay / 2) {
+    //                 playbackStalled = false;
+    //             } else if (deltaLatency > 0) {
+    //                 newRate = 1.0;
+    //             }
+    //         }
+
+    //         // don't change playbackrate for small variations (don't overload element with playbackrate changes)
+    //         if (Math.abs(videoModel.getPlaybackRate() - newRate) > minPlaybackRateChange) {
+    //             videoModel.setPlaybackRate(newRate);
+    //         }
+
+    //         if (settings.get().streaming.liveCatchUpMaxDrift > 0 && !isLowLatencySeekingInProgress &&
+    //             deltaLatency > settings.get().streaming.liveCatchUpMaxDrift) {
+    //             logger.info('Low Latency catchup mechanism. Latency too high, doing a seek to live point');
+    //             isLowLatencySeekingInProgress = true;
+    //             seekToLive();
+    //         } else {
+    //             isLowLatencySeekingInProgress = false;
+    //         }
+    //     }
+    // }
+
+    // TGC addition to allow estimatation of future playback rate
     function startPlaybackCatchUp() {
         if (videoModel) {
-            const cpr = settings.get().streaming.liveCatchUpPlaybackRate;
-            const liveDelay = mediaPlayerModel.getLiveDelay();
-            const deltaLatency = getCurrentLiveLatency() - liveDelay;
-            const d = deltaLatency * 5;
-            // Playback rate must be between (1 - cpr) - (1 + cpr)
-            // ex: if cpr is 0.5, it can have values between 0.5 - 1.5
-            const s = (cpr * 2) / (1 + Math.pow(Math.E, -d));
-            let newRate = (1 - cpr) + s;
-            // take into account situations in which there are buffer stalls,
-            // in which increasing playbackRate to reach target latency will
-            // just cause more and more stall situations
-            if (playbackStalled) {
-                const bufferLevel = getBufferLevel();
-                if (bufferLevel > liveDelay / 2) {
-                    playbackStalled = false;
-                } else if (deltaLatency > 0) {
-                    newRate = 1.0;
-                }
-            }
+            let obj = calculateNewPlaybackRate(
+                        settings.get().streaming.liveCatchUpPlaybackRate, 
+                        getCurrentLiveLatency(), mediaPlayerModel.getLiveDelay(), 
+                        playbackStalled, getBufferLevel(), videoModel.getPlaybackRate());
 
-            // don't change playbackrate for small variations (don't overload element with playbackrate changes)
-            if (Math.abs(videoModel.getPlaybackRate() - newRate) > minPlaybackRateChange) {
+            // Update playbackStalled
+            playbackStalled = obj.pStalled;
+
+            // Obtain newRate and apply to video model
+            let newRate = obj.newRate;
+            if (newRate) {  // non-null
                 videoModel.setPlaybackRate(newRate);
             }
 
+            // Note: This part is excluded from the estimation of future playback rate
             if (settings.get().streaming.liveCatchUpMaxDrift > 0 && !isLowLatencySeekingInProgress &&
                 deltaLatency > settings.get().streaming.liveCatchUpMaxDrift) {
                 logger.info('Low Latency catchup mechanism. Latency too high, doing a seek to live point');
@@ -663,6 +699,49 @@ function PlaybackController() {
                 isLowLatencySeekingInProgress = false;
             }
         }
+    }
+
+    // TGC addition to allow estimatation of future playback rate
+    function calculateNewPlaybackRate(liveCatchUpPlaybackRate, currentLiveLatency, liveDelay, pStalled, bufferLevel, currentPlaybackRate) {
+        // if (videoModel) {
+            // const cpr = settings.get().streaming.liveCatchUpPlaybackRate;
+            // const liveDelay = mediaPlayerModel.getLiveDelay();
+            // const deltaLatency = getCurrentLiveLatency() - liveDelay;
+
+            const cpr = liveCatchUpPlaybackRate;
+            const deltaLatency = currentLiveLatency - liveDelay;
+            const d = deltaLatency * 5;
+            // Playback rate must be between (1 - cpr) - (1 + cpr)
+            // ex: if cpr is 0.5, it can have values between 0.5 - 1.5
+            const s = (cpr * 2) / (1 + Math.pow(Math.E, -d));
+            let newRate = (1 - cpr) + s;
+            // take into account situations in which there are buffer stalls,
+            // in which increasing playbackRate to reach target latency will
+            // just cause more and more stall situations
+            // if (playbackStalled) {
+            if (pStalled) {
+                // const bufferLevel = getBufferLevel();
+                if (bufferLevel > liveDelay / 2) {
+                    // playbackStalled = false;
+                    pStalled = false;
+                } else if (deltaLatency > 0) {
+                    newRate = 1.0;
+                }
+            }
+
+            // don't change playbackrate for small variations (don't overload element with playbackrate changes)
+            // if (Math.abs(currentPlaybackRate - newRate) > minPlaybackRateChange) {
+                // videoModel.setPlaybackRate(newRate);
+            // }
+            if (Math.abs(currentPlaybackRate - newRate) <= minPlaybackRateChange) {
+                newRate = null;
+            }
+
+            return {
+                pStalled: pStalled,
+                newRate: newRate
+            }
+        // }
     }
 
     function stopPlaybackCatchUp() {
@@ -868,6 +947,8 @@ function PlaybackController() {
         computeLiveDelay: computeLiveDelay,
         getLiveDelay: getLiveDelay,
         getCurrentLiveLatency: getCurrentLiveLatency,
+        tryNeedToCatchUp: tryNeedToCatchUp,
+        calculateNewPlaybackRate: calculateNewPlaybackRate,
         play: play,
         isPaused: isPaused,
         pause: pause,
