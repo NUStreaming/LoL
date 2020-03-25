@@ -8,6 +8,7 @@ function TgcHeuristicRuleClass() {
     let DashMetrics = factory.getSingletonFactoryByName('DashMetrics');
     let StreamController = factory.getSingletonFactoryByName('StreamController');
     let PlaybackController = factory.getSingletonFactoryByName('PlaybackController');
+    let MediaPlayerModel = factory.getSingletonFactoryByName('MediaPlayerModel');
 
     let context = this.context;
     let instance;
@@ -33,6 +34,7 @@ function TgcHeuristicRuleClass() {
 
         let streamController = StreamController(context).getInstance();
         let playbackController = PlaybackController(context).getInstance();
+        let mediaPlayerModel = MediaPlayerModel(context).getInstance();
 
         // Get current bitrate
         let abrController = rulesContext.getAbrController();
@@ -91,7 +93,7 @@ function TgcHeuristicRuleClass() {
 
         // For each option, compute reward and identify option with maxReward
         options.forEach(function (segments, optionIndex) {
-            console.log('------------- Option: ' + segments + ' -------------');
+            // console.log('------------- Option: ' + segments + ' -------------');
 
             // Set up new (per-segment) Qoe evaluation for each option
             qoeEvaluator.setupPerSegmentQoe(segmentDuration, maxBitrateKbps, minBitrateKbps);
@@ -173,9 +175,26 @@ function TgcHeuristicRuleClass() {
 
                 /* 
                  * Determine playbackSpeed after the download of this future segment
-                 * *** Todo - Calculate playbackSpeed upon download and playback of this segment ***
                  */
-                let futurePlaybackSpeed = currentPlaybackSpeed;
+                let liveCatchUpPlaybackRate = player.getSettings().streaming.liveCatchUpPlaybackRate;   // user-specified playbackRate bound
+                let liveDelay = mediaPlayerModel.getLiveDelay();                                        // user-specified latency target
+                let liveCatchUpMinDrift = player.getSettings().streaming.liveCatchUpMinDrift            // user-specified min. drift (between latency target and actual latency)
+                let playbackStalled = false;    // calc pbSpeed -after- download of future segment, hence there will not be any stall since the segment is assumed to have just completed download
+                let futurePlaybackSpeed;
+
+                if (playbackController.tryNeedToCatchUp(liveCatchUpPlaybackRate, currentLatency, liveDelay, liveCatchUpMinDrift)) {
+                    let newRate = playbackController.calculateNewPlaybackRate(liveCatchUpPlaybackRate, currentLatency, liveDelay, playbackStalled, currentBufferLevel, currentPlaybackSpeed).newRate;
+                    if (newRate) {
+                        futurePlaybackSpeed = newRate;
+                    } else {
+                        // E.g. don't change playbackrate for small variations
+                        futurePlaybackSpeed = currentPlaybackSpeed;
+                    }
+                }
+                else {
+                    // If determined no need to catchup, run equivalent to playbackController.stopPlaybackCatchUp()
+                    futurePlaybackSpeed = 1.0;
+                }
                 // console.log('futurePlaybackSpeed: ' + futurePlaybackSpeed);
 
                 /*
@@ -195,7 +214,7 @@ function TgcHeuristicRuleClass() {
             // Calculate potential reward for this option
             let currentQoeInfo = qoeEvaluator.getPerSegmentQoe();
             // console.log('### QoeInfo ###');
-            console.log(currentQoeInfo);
+            // console.log(currentQoeInfo);
 
             let reward = currentQoeInfo.totalQoe;
             if (reward > maxReward) {
