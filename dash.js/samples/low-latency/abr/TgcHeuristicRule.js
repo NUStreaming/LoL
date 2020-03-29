@@ -74,7 +74,7 @@ function TgcHeuristicRuleClass() {
          * ************************ */
 
         // let futureSegmentCount = 5;     // lookahead window
-        let futureSegmentCount = 3;     // lookahead window - small
+        let futureSegmentCount = 2;     // lookahead window - small
         let maxReward = -100000000;
         let bestOption = [];
 
@@ -165,6 +165,8 @@ function TgcHeuristicRuleClass() {
                     segmentRebufferTime = (downloadTime - tmpBuffer);
                     // Update buffer
                     tmpBuffer = segmentDuration;    // corrected, to correct further (see todo)
+                    // Update latency
+                    currentLatency += segmentRebufferTime;
                 } else {
                     // No rebuffer case
                     segmentRebufferTime = 0;
@@ -182,8 +184,34 @@ function TgcHeuristicRuleClass() {
                 let playbackStalled = false;    // calc pbSpeed -after- download of future segment, hence there will not be any stall since the segment is assumed to have just completed download
                 let futurePlaybackSpeed;
 
-                if (playbackController.tryNeedToCatchUp(liveCatchUpPlaybackRate, currentLatency, liveDelay, liveCatchUpMinDrift)) {
-                    let newRate = playbackController.calculateNewPlaybackRate(liveCatchUpPlaybackRate, currentLatency, liveDelay, playbackStalled, currentBufferLevel, currentPlaybackSpeed).newRate;
+                // Check if to use custom or default playback rate calculations
+                let useCustomPlaybackControl, playbackBufferMin, playbackBufferMax;
+                if (player.getSettings().streaming.playbackBufferMin && player.getSettings().streaming.playbackBufferMax) {
+                    useCustomPlaybackControl = true;
+                    playbackBufferMin = player.getSettings().streaming.playbackBufferMin;
+                    playbackBufferMax = player.getSettings().streaming.playbackBufferMax;
+                } else {
+                    useCustomPlaybackControl = false;
+                }
+
+                // Check if need to catch up (custom/default methods)
+                let needToCatchUp;
+                if (useCustomPlaybackControl) {
+                    // Custom method
+                    needToCatchUp = playbackController.tryNeedToCatchUpCustom(liveCatchUpPlaybackRate, tmpBuffer, playbackBufferMin, playbackBufferMax);
+                } else {
+                    // Default method
+                    needToCatchUp = playbackController.tryNeedToCatchUp(liveCatchUpPlaybackRate, currentLatency, liveDelay, liveCatchUpMinDrift);
+                }
+
+                // If need to catch up, calculate new playback rate (custom/default methods)
+                if (needToCatchUp) {
+                    let newRate;
+                    if (useCustomPlaybackControl) {
+                        newRate = playbackController.calculateNewPlaybackRateCustom(liveCatchUpPlaybackRate, playbackBufferMin, playbackBufferMax, playbackStalled, tmpBuffer, currentPlaybackSpeed).newRate;
+                    } else {
+                        newRate = playbackController.calculateNewPlaybackRate(liveCatchUpPlaybackRate, currentLatency, liveDelay, playbackStalled, tmpBuffer, currentPlaybackSpeed).newRate;
+                    }
                     if (newRate) {
                         futurePlaybackSpeed = newRate;
                     } else {
@@ -192,17 +220,18 @@ function TgcHeuristicRuleClass() {
                     }
                 }
                 else {
-                    // If determined no need to catchup, run equivalent to playbackController.stopPlaybackCatchUp()
+                    // If no need to catch up, run equivalent to playbackController.stopPlaybackCatchUp()
                     futurePlaybackSpeed = 1.0;
                 }
                 // console.log('futurePlaybackSpeed: ' + futurePlaybackSpeed);
 
                 /*
-                 * Determine latency after the download of this future segment
+                 * Determine latency after the download (and playback) of this future segment
+                 * Note: Assume the next segment is played uniformly with the playback speed calculated at the start of the segment
                  */
                 let catchupDuration = segmentDuration - (segmentDuration / futurePlaybackSpeed);
-                let futureLatency = currentLatency + segmentRebufferTime - catchupDuration;
-                // console.log('currentLatency: ' + currentLatency + ', segmentRebufferTime: ' + segmentRebufferTime + ', catchupDuration: ' + catchupDuration + ', futureLatency: ' + futureLatency);
+                let futureLatency = currentLatency - catchupDuration;
+                // console.log('currentLatency: ' + currentLatency + ', catchupDuration: ' + catchupDuration + ', futureLatency: ' + futureLatency);
 
                 qoeEvaluator.logSegmentMetrics(segmentBitrateKbps, segmentRebufferTime, futureLatency, futurePlaybackSpeed);
 

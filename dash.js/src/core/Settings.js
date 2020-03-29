@@ -377,6 +377,8 @@ function Settings() {
             liveCatchUpMinDrift: 0.02,
             liveCatchUpMaxDrift: 0,
             liveCatchUpPlaybackRate: 0.5,
+            playbackBufferMin: null,
+            playbackBufferMax: null,
             lastBitrateCachingInfo: { enabled: true, ttl: 360000 },
             lastMediaSettingsCachingInfo: { enabled: true, ttl: 360000 },
             cacheLoadThresholds: { video: 50, audio: 5 },
