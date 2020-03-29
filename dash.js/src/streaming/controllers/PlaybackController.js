@@ -623,14 +623,37 @@ function PlaybackController() {
     }
 
     function needToCatchUp() {
-        return settings.get().streaming.liveCatchUpPlaybackRate > 0 && getTime() > 0 &&
-            Math.abs(getCurrentLiveLatency() - mediaPlayerModel.getLiveDelay()) > settings.get().streaming.liveCatchUpMinDrift;
+        // return settings.get().streaming.liveCatchUpPlaybackRate > 0 && getTime() > 0 &&
+        //     Math.abs(getCurrentLiveLatency() - mediaPlayerModel.getLiveDelay()) > settings.get().streaming.liveCatchUpMinDrift;
+
+        // TGC addition to check if use custom playback control
+        if (settings.get().streaming.playbackBufferMin && settings.get().streaming.playbackBufferMax) {
+            return tryNeedToCatchUpCustom(
+                    settings.get().streaming.liveCatchUpPlaybackRate,
+                    getBufferLevel(),
+                    settings.get().streaming.playbackBufferMin,
+                    settings.get().streaming.playbackBufferMax
+            );
+        } else {
+            // Else use default playback control
+            return tryNeedToCatchUp(
+                    settings.get().streaming.liveCatchUpPlaybackRate,
+                    getCurrentLiveLatency(),
+                    mediaPlayerModel.getLiveDelay(),
+                    settings.get().streaming.liveCatchUpMinDrift);
+        }
     }
 
     // TGC addition to allow estimatation of future playback rate
     function tryNeedToCatchUp(liveCatchUpPlaybackRate, currentLiveLatency, liveDelay, liveCatchUpMinDrift) {
         return liveCatchUpPlaybackRate > 0 && getTime() > 0 &&
             Math.abs(currentLiveLatency - liveDelay) > liveCatchUpMinDrift;
+    }
+
+    // TGC addition to allow estimatation of future playback rate
+    function tryNeedToCatchUpCustom(liveCatchUpPlaybackRate, currentBuffer, playbackBufferMin, playbackBufferMax) {
+        return liveCatchUpPlaybackRate > 0 && getTime() > 0 &&
+            (currentBuffer < playbackBufferMin || currentBuffer > playbackBufferMax);
     }
 
     // Original implementation
@@ -675,16 +698,26 @@ function PlaybackController() {
     // TGC addition to allow estimatation of future playback rate
     function startPlaybackCatchUp() {
         if (videoModel) {
-            let obj = calculateNewPlaybackRate(
-                        settings.get().streaming.liveCatchUpPlaybackRate, 
-                        getCurrentLiveLatency(), mediaPlayerModel.getLiveDelay(), 
+            let results;
+            // Custom playback control: Based on buffer level
+            if (settings.get().streaming.playbackBufferMin && settings.get().streaming.playbackBufferMax) {
+                results = calculateNewPlaybackRateCustom(
+                        settings.get().streaming.liveCatchUpPlaybackRate,
+                        settings.get().streaming.playbackBufferMin, settings.get().streaming.playbackBufferMax,
                         playbackStalled, getBufferLevel(), videoModel.getPlaybackRate());
+            } else {
+                // Default playback control: Based on target and current latency
+                results = calculateNewPlaybackRate(
+                    settings.get().streaming.liveCatchUpPlaybackRate,
+                    getCurrentLiveLatency(), mediaPlayerModel.getLiveDelay(),
+                    playbackStalled, getBufferLevel(), videoModel.getPlaybackRate());
+            }
 
             // Update playbackStalled
-            playbackStalled = obj.pStalled;
+            if (results.pStalled) playbackStalled = results.pStalled;
 
             // Obtain newRate and apply to video model
-            let newRate = obj.newRate;
+            let newRate = results.newRate;
             if (newRate) {  // non-null
                 videoModel.setPlaybackRate(newRate);
             }
@@ -742,6 +775,55 @@ function PlaybackController() {
                 newRate: newRate
             }
         // }
+    }
+
+    // TGC addition to allow estimatation of future playback rate
+    function calculateNewPlaybackRateCustom(liveCatchUpPlaybackRate, playbackBufferMin, playbackBufferMax, pStalled, bufferLevel, currentPlaybackRate) {
+        // Custom playback rate calculation
+        // Similar calculation as the default implementation (above), just that we use buffer instead of latency
+        const cpr = liveCatchUpPlaybackRate;
+        let deltaBuffer;
+        if (bufferLevel < playbackBufferMin) {
+            // To decrease playback rate
+            deltaBuffer = bufferLevel - playbackBufferMin;
+        }
+        else if (bufferLevel > playbackBufferMax) {
+            // To increase playback rate
+            deltaBuffer = bufferLevel - playbackBufferMax;
+        }
+        else {
+            // Playback rate = 1
+            deltaBuffer = 0;
+        }
+        const d = deltaBuffer * 1;  // probably some amplification factor, don't amplify for now (default val: 5)
+
+        // Playback rate must be between (1 - cpr) - (1 + cpr)
+        // ex: if cpr is 0.5, it can have values between 0.5 - 1.5
+        const s = (cpr * 2) / (1 + Math.pow(Math.E, -d));
+        let newRate = (1 - cpr) + s;
+
+        // take into account situations in which there are buffer stalls,
+        // in which increasing playbackRate to reach target latency will
+        // just cause more and more stall situations
+        if (pStalled) {
+            if (bufferLevel > playbackBufferMax) {
+                // Safe hence "unstall" it?
+                pStalled = false;
+            } else if (deltaLatency > 0) {
+                // We should never reach this point, but leaving this here first for consistency w the default appraoch
+                newRate = 1.0;
+            }
+        }
+
+        // don't change playbackrate for small variations (don't overload element with playbackrate changes)
+        if (Math.abs(currentPlaybackRate - newRate) <= minPlaybackRateChange) {
+            newRate = null;
+        }
+
+        return {
+            pStalled: pStalled,
+            newRate: newRate
+        }
     }
 
     function stopPlaybackCatchUp() {
@@ -948,7 +1030,9 @@ function PlaybackController() {
         getLiveDelay: getLiveDelay,
         getCurrentLiveLatency: getCurrentLiveLatency,
         tryNeedToCatchUp: tryNeedToCatchUp,
+        tryNeedToCatchUpCustom: tryNeedToCatchUpCustom,
         calculateNewPlaybackRate: calculateNewPlaybackRate,
+        calculateNewPlaybackRateCustom: calculateNewPlaybackRateCustom,
         play: play,
         isPaused: isPaused,
         pause: pause,

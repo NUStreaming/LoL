@@ -15,6 +15,7 @@
 
     <script class="code">
         var player, targetLatency, minDrift, catchupPlaybackRate;
+        var useCustomPlaybackControl, playbackBufferMin, playbackBufferMax;
         var ruleUsed = '';
 
         function init() {
@@ -92,6 +93,20 @@
                     'liveCatchUpPlaybackRate': catchupPlaybackRate
                 }
             });
+
+            // TGC addition for custom playback control
+            useCustomPlaybackControl = document.getElementById("use-custom-playback-control").checked;
+            if (useCustomPlaybackControl) {
+                playbackBufferMin = parseFloat(document.getElementById("playback-buffer-min").value, 10);
+                playbackBufferMax = parseFloat(document.getElementById("playback-buffer-max").value, 10);
+                
+                player.updateSettings({
+                    'streaming': {
+                        'playbackBufferMin': playbackBufferMin,
+                        'playbackBufferMax': playbackBufferMax
+                    }
+                });
+            }
         }
     </script>
 
@@ -153,6 +168,14 @@
                         <p>Target Latency (secs): <input type="number" id="target-latency" value="1" min="0" step="0.1"></p>
                         <p>Min. drift (secs): <input type="number" id="min-drift" value="0.05" min="0.0" max="0.5" step="0.01"></p>
                         <p>Catch-up playback rate (%): <input type="number" id="catchup-playback-rate" value="0.5" min="0.0" max="0.5" step="0.01"></p>
+                        <!-- TGC addition for custom playback control -->
+                        <br/>
+                        <p><input type="checkbox" id="use-custom-playback-control" name="use-custom-playback-control" style="width: 2em;">
+                            <label for="use-custom-playback-control">Use custom playback control</label></p>
+                        <p style="font-size: 0.9em;">(Note: these params will only be used if the above checkbox is checked)</p>
+                        <p>Playback buffer min. (secs): <input type="number" id="playback-buffer-min" value="0.5" min="0.0" max="2.0" step="0.1"></p>
+                        <p>Playback buffer max. (secs): <input type="number" id="playback-buffer-max" value="0.7" min="0.0" max="2.0" step="0.1"></p>
+
                         <button type="submit">Apply</button>
                     </fieldset>
                 </form>
