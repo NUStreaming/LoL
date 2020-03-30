@@ -223,7 +223,7 @@ class SOMAbrController{
                 somNeuronState.QoE];
             // give 0 as the targetLatency to find the optimum neuron
             // maximizing QoE = minimizing 1/QoE (~ 0)
-            let weights=[0.4, 0.4, 0.05, 0.05, 0.4]; // throughput, latency, buffer, previousBitrate, QoE 
+            let weights=[0.4, 0.4, 0.05, 0.00, 0.4]; // throughput, latency, buffer, previousBitrate, QoE 
             let distance=this.getDistance(somData,[throughput,0,bufferSize,currentBitrate,0],weights);
             if (minDistance==null || distance<minDistance){
                 minDistance=distance;
