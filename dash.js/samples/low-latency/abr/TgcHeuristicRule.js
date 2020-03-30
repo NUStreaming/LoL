@@ -46,6 +46,7 @@ function TgcHeuristicRuleClass() {
         const bufferStateVO = dashMetrics.getLatestBufferInfoVO(mediaType, true, metricsConstants.BUFFER_STATE);
         const scheduleController = rulesContext.getScheduleController();
         const currentBufferLevel = dashMetrics.getCurrentBufferLevel(mediaType, true);
+        console.log('** currentBufferLevel: ' + currentBufferLevel);
         const streamInfo = rulesContext.getStreamInfo();
         const isDynamic = streamInfo && streamInfo.manifestInfo ? streamInfo.manifestInfo.isDynamic : null;
         const throughputHistory = abrController.getThroughputHistory();
@@ -73,10 +74,11 @@ function TgcHeuristicRuleClass() {
          *    Main abr logic
          * ************************ */
 
-        // let futureSegmentCount = 5;     // lookahead window
-        let futureSegmentCount = 2;     // lookahead window - small
+        let futureSegmentCount = 5;     // lookahead window
+        // let futureSegmentCount = 2;     // lookahead window - small
         let maxReward = -100000000;
         let bestOption = [];
+        let bestQoeInfo = {};
 
         // Qoe stuff
         let qoeEvaluator = new QoeEvaluator();
@@ -152,9 +154,8 @@ function TgcHeuristicRuleClass() {
                 let downloadTime = futureSegmentSizeKbits / futureBandwidthKbps;
                 // console.log('Estimated downloadTime: ' + downloadTime);
                 
-                // console.log('----------------------------------------------------');
-                // console.log('futureBandwidthKbps: ' + futureBandwidthKbps + ', futureSegmentSizeKbits: ' + futureSegmentSizeKbits + ', downloadTime: ' + downloadTime + ', tmpBuffer (bef): ' + tmpBuffer);
-                // console.log('----------------------------------------------------');
+                // console.log('-------------------------------------------');
+                // console.log('tmpBuffer (bef): ' + tmpBuffer + ', futureBandwidthKbps: ' + futureBandwidthKbps + ', futureSegmentSizeKbits: ' + futureSegmentSizeKbits + ', downloadTime: ' + downloadTime);
 
                 /*
                  * Determine segmentRebufferTime (if any) for this future segment
@@ -174,6 +175,9 @@ function TgcHeuristicRuleClass() {
                     tmpBuffer -= downloadTime;
                     tmpBuffer += segmentDuration;
                 }
+
+                // console.log('tmpBuffer (aft): ' + tmpBuffer + ', segmentRebufferTime: ' + segmentRebufferTime);
+                // console.log('-------------------------------------------');
 
                 /* 
                  * Determine playbackSpeed after the download of this future segment
@@ -249,8 +253,14 @@ function TgcHeuristicRuleClass() {
             if (reward > maxReward) {
                 maxReward = reward;
                 bestOption = options[optionIndex];
+                bestQoeInfo = currentQoeInfo;
             }
         });
+
+        // For debugging
+        console.log('### bestOption: ' + bestOption + ' ###');
+        console.log('### bestQoeInfo ###');
+        console.log(bestQoeInfo);
 
         let nextQuality;
         if (bestOption.length < 1) { 

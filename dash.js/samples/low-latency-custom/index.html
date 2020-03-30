@@ -37,6 +37,7 @@
             //         'useDefaultABRRules': true
             //     }
             // }});
+            // ruleUsed = player.getSettings().streaming.abr.ABRStrategy;  // for result logging later
 
             /* 
             * Option B: Use custom ABR rules
@@ -57,6 +58,9 @@
                 }
             });
             // Use custom rule - end
+
+            // Update UI
+            document.querySelector('#rule-used-tag').innerText = ruleUsed;
 
             // Set provided abr rule - "abrDynamic" (default), "abrBola" and "abrThroughput" //
             // player.updateSettings({
@@ -170,8 +174,11 @@
                         <p>Catch-up playback rate (%): <input type="number" id="catchup-playback-rate" value="0.5" min="0.0" max="0.5" step="0.01"></p>
                         <!-- TGC addition for custom playback control -->
                         <br/>
-                        <p><input type="checkbox" id="use-custom-playback-control" name="use-custom-playback-control" style="width: 2em;">
-                            <label for="use-custom-playback-control">Use custom playback control</label></p>
+                        <!-- Option A: To use DEFAULT playback control -->
+                        <!-- <p><input type="checkbox" id="use-custom-playback-control" name="use-custom-playback-control" style="width: 2em;"> -->
+                        <!-- Option B: To use CUSTOM playback control -->
+                        <p><input checked type="checkbox" id="use-custom-playback-control" name="use-custom-playback-control" style="width: 2em;">
+                        <label for="use-custom-playback-control">Use custom playback control</label></p>
                         <p style="font-size: 0.9em;">(Note: these params will only be used if the above checkbox is checked)</p>
                         <p>Playback buffer min. (secs): <input type="number" id="playback-buffer-min" value="0.5" min="0.0" max="2.0" step="0.1"></p>
                         <p>Playback buffer max. (secs): <input type="number" id="playback-buffer-max" value="0.7" min="0.0" max="2.0" step="0.1"></p>
@@ -189,6 +196,7 @@
                     <li>Playback rate: <span id="playbackrate-tag"></span></li>
                     <li>Buffer: <b><span id="buffer-tag"></span></b></li>
                     <li>Quality: <b><span id="quality-tag"></span></b></li>
+                    <li>Rule used: <b><span id="rule-used-tag"></span></b></li>
                 </ul>
                 <div id="stats"></div>
             </fieldset>
@@ -221,7 +229,11 @@
         const player = init();
         const video = document.querySelector("video")
         let stallingAt = null;
-        let startupAt = null
+        let startupAt = null;
+
+        // Additional variables for QoeEvaluator in run.js
+        let prevStallDurationMs = null;
+
         const CMA = () => {
             let average = 0;
             let count = 0;
@@ -272,9 +284,16 @@
             const latencyCMA = CMA();
             const bufferCMA = CMA();
 
-            // todo qoeEvaluator
-            // let lastStallDurationMs = 0;
+            // Final results obj to be returned to run.js
+            window.abrHistory = {
+                byDownload: {},
+                overall: {},
+                abrStrategy: '',
+                customPlaybackControl: null,
+                misc: {}
+            };
 
+            // window.abrHistory.overall metrics
             // const history = window.abrHistory = {
             const history = {
                 switchHistory: [],
@@ -286,22 +305,9 @@
                 currentBufferLength: 0
             };
 
-            // final results obj to be returned to run.js
-            window.abrHistory = {
-                byDownload: {},
-                overall: {},
-                abrStrategy: '',
-                resultsQoe: {}
-            };
-
-            // todo qoeEvaluator
-            // let segmentDuration = 0.5;      // todo - get from dash
-            // let maxBitrateKbps = 1000;  // todo - get from dash
-            // const qoeEvaluatorRecording = new QoeEvaluator(segmentDuration, maxBitrateKbps);
-
-            // Record the abrStrategy
-            // window.abrHistory.abrStrategy = player.getSettings().streaming.abr.ABRStrategy;
+            // Record the abrStrategy and if customPlaybackControl was used
             window.abrHistory.abrStrategy = ruleUsed;
+            window.abrHistory.customPlaybackControl = document.getElementById("use-custom-playback-control").checked;
 
             // Record the initial quality
             recordSwitch(player.getBitrateInfoListFor('video')[player.getQualityFor('video')]);
@@ -314,6 +320,8 @@
                 if (lastQuality.end === null) {
                     lastQuality.end = video.currentTime;
                 }
+                console.log('##############');
+                console.log(window.abrHistory);
                 console.warn('Run ended. Please navigate back to node for results.');
             }
 
@@ -327,14 +335,22 @@
             ////////////////////////////////////////////////////////////////////////////////
             // may.lim: add logging on segment download (instead of polling-based)
             ////////////////////////////////////////////////////////////////////////////////
-            player.on(dashjs.MediaPlayer.events.FRAGMENT_LOADING_COMPLETED, (e) => {                
+            player.on(dashjs.MediaPlayer.events.FRAGMENT_LOADING_COMPLETED, (e) => { 
+                // Add info for QoeEvaluator in run.js
+                if (!window.abrHistory.misc.segmentDurationSec)
+                    window.abrHistory.misc.segmentDurationSec = e.request.duration; 
+                if (!window.abrHistory.misc.minBitrateKbps)
+                    window.abrHistory.misc.minBitrateKbps = e.request.mediaInfo.bitrateList[0].bandwidth / 1000.0;
+                if (!window.abrHistory.misc.maxBitrateKbps)
+                    window.abrHistory.misc.maxBitrateKbps = e.request.mediaInfo.bitrateList[e.request.mediaInfo.bitrateList.length - 1].bandwidth / 1000.0;
+
                 const currentLatency = parseFloat(player.getCurrentLiveLatency(), 10);
                 const currentBuffer = player.getDashMetrics().getCurrentBufferLevel("video");
                 history.averageLatency = latencyCMA.average(currentLatency);
                 history.averageBufferLength = bufferCMA.average(currentBuffer);
 
-                console.log('[client] currentLatency: ' + currentLatency);
-                console.log('[client] currentBuffer: ' + currentBuffer);
+                // console.log('[client] currentLatency: ' + currentLatency);
+                // console.log('[client] currentBuffer: ' + currentBuffer);
                 
                 history.currentLatency = currentLatency;
                 history.currentBufferLength = currentBuffer;
@@ -343,10 +359,10 @@
                 let urlParsed = e.request.url.split('/');
                 let segmentKey = urlParsed[urlParsed.length - 1].split('.')[0];
 
-                console.log('');
-                console.log('>>> FRAGMENT_LOADING_COMPLETED: ' + segmentKey);
-                console.log(history);
-                console.log(e.request);
+                // console.log('');
+                // console.log('>>> FRAGMENT_LOADING_COMPLETED: ' + segmentKey);
+                // console.log(history);
+                // console.log(e.request);
 
                 // update each segment's metrics value with the current cumulative metrics
                 let currentMetrics = {};
@@ -376,12 +392,22 @@
                 const isDynamic = streamInfo && streamInfo.manifestInfo ? streamInfo.manifestInfo.isDynamic : null;
                 const throughput = Math.round(player.getSafeAverageThroughput('video', isDynamic));
                 currentMetrics.throughputKbps = throughput;
-                console.log('-- player.getSafeAverageThroughput(): ' + throughput + 'kbps');
+                // console.log('-- player.getSafeAverageThroughput(): ' + throughput + 'kbps');
 
                 // add current time
                 // currentMetrics.currentTimeAbsolute = Math.floor(Date.now() / 1000);
                 currentMetrics.currentTimeAbsolute = Date.now() / 1000;    // retain milliseconds
                 currentMetrics.currentTimeRelative = video.currentTime;
+
+                // add additional info for QoeEvaluator
+                currentMetrics.segmentBitrateKbps = e.request.mediaInfo.bitrateList[e.request.quality].bandwidth / 1000.0;
+                currentMetrics.playbackSpeed = player.getPlaybackRate();
+                if (prevStallDurationMs && currentMetrics.stallDurationMs) {
+                    currentMetrics.segmentStallDurationMs = currentMetrics.stallDurationMs - prevStallDurationMs;
+                } else {
+                    currentMetrics.segmentStallDurationMs = 0; // i.e. omit stallDuration data for first segment only because unable to calc difference
+                }
+                prevStallDurationMs = currentMetrics.stallDurationMs;
 
                 // add other request/response-related info
                 currentMetrics.requestInfo = {
@@ -402,10 +428,6 @@
 
                 // constantly update overall metrics value with the latest cumulative metrics
                 window.abrHistory.overall = history;
-
-                // todo qoeEvaluator
-                // update qoeEvaluator with current segment's metrics
-                // qoeEvaluatorRecording.logSegmentMetrics(currentLatency);
             });
 
             function formatTimeString(date) {

@@ -128,5 +128,10 @@ class QoeInfo {
         // Store total Qoe value based on current Weighted Sum values
         this.totalQoe = 0;
     }
+}
 
+// Additional for run.js invocation of QoeEvaluator
+if (typeof exports !== 'undefined') {
+    exports.QoeEvaluator = QoeEvaluator;
+    exports.QoeInfo = QoeInfo;
 }

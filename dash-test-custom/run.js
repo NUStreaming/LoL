@@ -6,6 +6,8 @@ const stats = require("./stats");
 const CHROME_PATH =
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
+const {QoeEvaluator, QoeInfo} = require("../dash.js/samples/low-latency/abr/QoeEvaluator.js");
+
 let patterns;
 if (process.env.npm_package_config_ffmpeg_profile === 'PROFILE_FAST') {
   patterns = fastNetworkPatterns;
@@ -43,7 +45,7 @@ run()
       /////////////////////////////////////
       // evaluate.js
       /////////////////////////////////////
-      /* testTime, networkPattern, abrStrategy, comments
+      /* testTime, networkPattern, abrStrategy, comments, etc.
        * + resultsQoe obj
        *  - averageBitrate
        *  - averageBitrateVariations / numSwitches (added both)
@@ -55,41 +57,65 @@ run()
       evaluate.testTime = new Date();
       evaluate.networkPattern = result.networkPattern;
       evaluate.abrStrategy = result.abrStrategy;
+      evaluate.customPlaybackControl = result.customPlaybackControl;
 
       ///////////////////////////////////////////////////////////////////////////////////
-      // QoE model - see https://xia.cs.cmu.edu/resources/Documents/Yin_sigcomm15.pdf
-      // Todo: 
-      // -- include averageLatency?
-      // -- rethink totalRebufferTime as it varies with test duration
+      // QoE model
+      // References - See QoeEvaluator.js 
+      //            - https://xia.cs.cmu.edu/resources/Documents/Yin_sigcomm15.pdf
       ///////////////////////////////////////////////////////////////////////////////////
-      // QoE score breakdown, initialize weights to 0 first
-      evaluate.resultsQoe = {
-        averageBitrate:           { weight: 0, value: (result.overall.averageBitrate / 1000),           subtotal: 0},  // raw units: bps, QoE units: kbps
-        averageBitrateVariations: { weight: 0, value: (result.overall.averageBitrateVariations / 1000), subtotal: 0},  // raw units: bps, QoE units: kbps
-        numSwitches:              { weight: 0, value: result.overall.numSwitches,                       subtotal: 0},
-        totalRebufferTime:        { weight: 0, value: (result.overall.stallDurationMs / 1000),          subtotal: 0},  // raw units: ms, QoE units: s 
-        averageLatency:           { weight: 0, value: result.overall.averageLatency,                    subtotal: 0}   // raw units: s, QoE units: s
-        // startupDelay:             { weight: 0, value: result.startupDelay,                              subtotal: 0}  // current units: s, QoE units: s
-      };
+      let qoeEvaluator = new QoeEvaluator();
+      let segmentDurationSec = result.misc.segmentDurationSec;
+      let maxBitrateKbps = result.misc.maxBitrateKbps;
+      let minBitrateKbps = result.misc.minBitrateKbps;
+      qoeEvaluator.setupPerSegmentQoe(segmentDurationSec, maxBitrateKbps, minBitrateKbps);
 
-      // select desired weights - BALANCED
-      evaluate.resultsQoe.averageBitrate.weight = 1;
-      evaluate.resultsQoe.averageBitrateVariations.weight = 1;
-      evaluate.resultsQoe.totalRebufferTime.weight = 3000;
-      // evaluate.resultsQoe.startupDelay.weight = 3000;
-
-      // calculate total QoE score
-      let total = 0;
-      for (var key in evaluate.resultsQoe) {
-        if (evaluate.resultsQoe.hasOwnProperty(key)) { 
-          // calculate subtotal for each component first
-          evaluate.resultsQoe[key].subtotal = evaluate.resultsQoe[key].weight * evaluate.resultsQoe[key].value;
-
-          if (key === 'averageBitrate') total += evaluate.resultsQoe[key].subtotal;
-          else  total -= evaluate.resultsQoe[key].subtotal;
+      let numSegments = 0;
+      for (var key in result.byDownload) {
+        if (result.byDownload.hasOwnProperty(key)) {
+          let segmentBitrateKbps = result.byDownload[key].segmentBitrateKbps;
+          let segmentRebufferTimeSec = result.byDownload[key].segmentStallDurationMs / 1000.0;
+          let latencySec = result.byDownload[key].currentLatency;
+          let playbackSpeed = result.byDownload[key].playbackSpeed;
+          qoeEvaluator.logSegmentMetrics(segmentBitrateKbps, segmentRebufferTimeSec, latencySec, playbackSpeed);
         }
+        numSegments++;
       }
-      evaluate.resultsQoe.total = total;
+
+      evaluate.resultsQoe = qoeEvaluator.getPerSegmentQoe(); // returns QoeInfo object
+      evaluate.numSegments = numSegments;
+
+      // Old QoE calculations (before QoeEvaluator.js)
+      // // QoE score breakdown, initialize weights to 0 first
+      // evaluate.resultsQoe = {
+      //   averageBitrate:           { weight: 0, value: (result.overall.averageBitrate / 1000),           subtotal: 0},  // raw units: bps, QoE units: kbps
+      //   averageBitrateVariations: { weight: 0, value: (result.overall.averageBitrateVariations / 1000), subtotal: 0},  // raw units: bps, QoE units: kbps
+      //   numSwitches:              { weight: 0, value: result.overall.numSwitches,                       subtotal: 0},
+      //   totalRebufferTime:        { weight: 0, value: (result.overall.stallDurationMs / 1000),          subtotal: 0},  // raw units: ms, QoE units: s
+      //   averageLatency:           { weight: 0, value: result.overall.averageLatency,                    subtotal: 0}   // raw units: s, QoE units: s
+      //   // startupDelay:             { weight: 0, value: result.startupDelay,                              subtotal: 0}  // current units: s, QoE units: s
+      // };
+
+      // // select desired weights - BALANCED
+      // evaluate.resultsQoe.averageBitrate.weight = 1;
+      // evaluate.resultsQoe.averageBitrateVariations.weight = 1;
+      // evaluate.resultsQoe.totalRebufferTime.weight = 3000;
+      // // evaluate.resultsQoe.startupDelay.weight = 3000;
+
+      // // calculate total QoE score
+      // let total = 0;
+      // for (var key in evaluate.resultsQoe) {
+      //   if (evaluate.resultsQoe.hasOwnProperty(key)) {
+      //     // calculate subtotal for each component first
+      //     evaluate.resultsQoe[key].subtotal = evaluate.resultsQoe[key].weight * evaluate.resultsQoe[key].value;
+
+      //     if (key === 'averageBitrate') total += evaluate.resultsQoe[key].subtotal;
+      //     else  total -= evaluate.resultsQoe[key].subtotal;
+      //   }
+      // }
+      // evaluate.resultsQoe.total = total;
+      // Old QoE calculations - END
+      
       
       // finally, allow user to optionally input comments
       readline.question('Any comments for this test run: ', data => {
@@ -190,37 +216,45 @@ async function run() {
   console.log('Processing client metrics to results files..');
 
   // metrics-by-download.json
-  let resultByDownload = metrics.byDownload;
-  for (var key in resultByDownload) {
-    if (resultByDownload.hasOwnProperty(key)) { 
-        resultByDownload[key].averageBitrate = stats.computeAverageBitrate(resultByDownload[key].switchHistory, resultByDownload[key].downloadTimeRelative);
-        resultByDownload[key].numSwitches = resultByDownload[key].switchHistory.length;
+  let resultByDownload = {};
+  if (metrics.byDownload) {
+    resultByDownload = metrics.byDownload;
+    for (var key in resultByDownload) {
+      if (resultByDownload.hasOwnProperty(key)) { 
+          resultByDownload[key].averageBitrate = stats.computeAverageBitrate(resultByDownload[key].switchHistory, resultByDownload[key].downloadTimeRelative);
+          resultByDownload[key].numSwitches = resultByDownload[key].switchHistory.length;
+      }
     }
   }
 
   // metrics-overall.json
-  let resultOverall = metrics.overall;
-  resultOverall.averageBitrate = stats.computeAverageBitrate(resultOverall.switchHistory);
-  resultOverall.numSwitches = resultOverall.switchHistory.length;
-  // calculate averageBitrateVariations
-  if (resultOverall.switchHistory.length > 1) {
-    let totalBitrateVariations = 0;
-    for (var i = 0; i < resultOverall.switchHistory.length - 1; i++) {
-      totalBitrateVariations += Math.abs(resultOverall.switchHistory[i+1].quality.bitrate - resultOverall.switchHistory[i].quality.bitrate);
+  let resultOverall = {};
+  if (metrics.overall) {
+    resultOverall = metrics.overall;
+    resultOverall.averageBitrate = stats.computeAverageBitrate(resultOverall.switchHistory);
+    resultOverall.numSwitches = resultOverall.switchHistory.length;
+    // calculate averageBitrateVariations
+    if (resultOverall.switchHistory.length > 1) {
+      let totalBitrateVariations = 0;
+      for (var i = 0; i < resultOverall.switchHistory.length - 1; i++) {
+        totalBitrateVariations += Math.abs(resultOverall.switchHistory[i+1].quality.bitrate - resultOverall.switchHistory[i].quality.bitrate);
+      }
+      resultOverall.averageBitrateVariations = totalBitrateVariations / (resultOverall.switchHistory.length - 1);
+    } else {
+      resultOverall.averageBitrateVariations = 0; 
     }
-    resultOverall.averageBitrateVariations = totalBitrateVariations / (resultOverall.switchHistory.length - 1);
-  } else {
-    resultOverall.averageBitrateVariations = 0; 
+    // delete unwanted data
+    delete resultOverall.currentLatency;
+    delete resultOverall.currentBufferLength;
   }
-  // delete unwanted data
-  delete resultOverall.currentLatency;
-  delete resultOverall.currentBufferLength;
 
   let result = {
     byDownload: resultByDownload,
     overall: resultOverall,
     networkPattern: NETWORK_PROFILE,
-    abrStrategy: metrics.abrStrategy
+    abrStrategy: metrics.abrStrategy,
+    customPlaybackControl: metrics.customPlaybackControl,
+    misc: metrics.misc
   };
 
   return result;
