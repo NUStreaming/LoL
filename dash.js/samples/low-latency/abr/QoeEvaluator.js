@@ -24,11 +24,11 @@ class QoeEvaluator {
 
     createQoeInfo(fragmentType, fragmentDuration, maxBitrateKbps, minBitrateKbps) {
         /*
-         * [Weights][Source: Abdelhak Bentaleb, 2020 (last updated: 20 Mar 2020)]
+         * [Weights][Source: Abdelhak Bentaleb, 2020 (last updated: 30 Mar 2020)]
          * bitrateReward:           segment duration, e.g. 0.5s
          * bitrateSwitchPenalty:    0.02s or 1s if the bitrate switch is too important
          * rebufferPenalty:         max encoding bitrate, e.g. 1000kbps
-         * latencyPenalty:          if L ≤ 1.1 seconds then = 0.005, otherwise = 0.01
+         * latencyPenalty:          if L ≤ 1.1 seconds then = min encoding bitrate * 0.05, otherwise = max encoding bitrate * 0.1
          * playbackSpeedPenalty:    min encoding bitrate, e.g. 200kbps
          */
 
@@ -50,8 +50,8 @@ class QoeEvaluator {
 
         // Set weight: latencyPenalty
         qoeInfo.weights.latencyPenalty = [];
-        qoeInfo.weights.latencyPenalty.push({ threshold: 1.1, penalty: 0.005 });
-        qoeInfo.weights.latencyPenalty.push({ threshold: 100000000, penalty: 0.01 });
+        qoeInfo.weights.latencyPenalty.push({ threshold: 1.1, penalty: (minBitrateKbps * 0.05) });
+        qoeInfo.weights.latencyPenalty.push({ threshold: 100000000, penalty: (maxBitrateKbps * 0.1) });
 
         // Set weight: playbackSpeedPenalty
         if (!minBitrateKbps) qoeInfo.weights.playbackSpeedPenalty = 200;   // set some safe value, else consider throwing error
