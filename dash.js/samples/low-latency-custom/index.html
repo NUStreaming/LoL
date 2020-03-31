@@ -31,33 +31,33 @@
             /* 
             * Option A: Use default ABR rules
             */
-            // player.updateSettings({
-            // 'streaming': {
-            //     'abr': {
-            //         'useDefaultABRRules': true
-            //     }
-            // }});
-            // ruleUsed = player.getSettings().streaming.abr.ABRStrategy;  // for result logging later
+            player.updateSettings({
+            'streaming': {
+                'abr': {
+                    'useDefaultABRRules': true
+                }
+            }});
+            ruleUsed = player.getSettings().streaming.abr.ABRStrategy;  // for result logging later
 
             /* 
             * Option B: Use custom ABR rules
             */
-            // TgcHeuristicRule //
-            ruleUsed = 'TgcHeuristicRule';  // for result logging later
-            player.addABRCustomRule('qualitySwitchRules', 'TgcHeuristicRule', TgcHeuristicRule);
+            // // TgcHeuristicRule //
+            // ruleUsed = 'TgcHeuristicRule';  // for result logging later
+            // player.addABRCustomRule('qualitySwitchRules', 'TgcHeuristicRule', TgcHeuristicRule);
 
-            // TgcLearningRule //
-            // ruleUsed = 'TgcLearningRule';   // for result logging later
-            // player.addABRCustomRule('qualitySwitchRules', 'TgcLearningRule', TgcLearningRule);
+            // // TgcLearningRule //
+            // // ruleUsed = 'TgcLearningRule';   // for result logging later
+            // // player.addABRCustomRule('qualitySwitchRules', 'TgcLearningRule', TgcLearningRule);
 
-            player.updateSettings({
-                'streaming': {
-                    'abr': {
-                        'useDefaultABRRules': false
-                    }
-                }
-            });
-            // Use custom rule - end
+            // player.updateSettings({
+            //     'streaming': {
+            //         'abr': {
+            //             'useDefaultABRRules': false
+            //         }
+            //     }
+            // });
+            // // Use custom rule - end
 
             // Update UI
             document.querySelector('#rule-used-tag').innerText = ruleUsed;
@@ -171,13 +171,13 @@
                         <legend>Configurable parameters</legend>
                         <p>Target Latency (secs): <input type="number" id="target-latency" value="1" min="0" step="0.1"></p>
                         <p>Min. drift (secs): <input type="number" id="min-drift" value="0.05" min="0.0" max="0.5" step="0.01"></p>
-                        <p>Catch-up playback rate (%): <input type="number" id="catchup-playback-rate" value="0.5" min="0.0" max="0.5" step="0.01"></p>
+                        <p>Catch-up playback rate (e.g. 0.3 means playback rate is 0.7-1.3x): <input type="number" id="catchup-playback-rate" value="0.5" min="0.0" max="0.5" step="0.01"></p>
                         <!-- TGC addition for custom playback control -->
                         <br/>
                         <!-- Option A: To use DEFAULT playback control -->
-                        <!-- <p><input type="checkbox" id="use-custom-playback-control" name="use-custom-playback-control" style="width: 2em;"> -->
+                        <p><input type="checkbox" id="use-custom-playback-control" name="use-custom-playback-control" style="width: 2em;">
                         <!-- Option B: To use CUSTOM playback control -->
-                        <p><input checked type="checkbox" id="use-custom-playback-control" name="use-custom-playback-control" style="width: 2em;">
+                        <!-- <p><input checked type="checkbox" id="use-custom-playback-control" name="use-custom-playback-control" style="width: 2em;"> -->
                         <label for="use-custom-playback-control">Use custom playback control</label></p>
                         <p style="font-size: 0.9em;">(Note: these params will only be used if the above checkbox is checked)</p>
                         <p>Playback buffer min. (secs): <input type="number" id="playback-buffer-min" value="0.5" min="0.0" max="2.0" step="0.1"></p>
@@ -196,6 +196,7 @@
                     <li>Playback rate: <span id="playbackrate-tag"></span></li>
                     <li>Buffer: <b><span id="buffer-tag"></span></b></li>
                     <li>Quality: <b><span id="quality-tag"></span></b></li>
+                    <li>Available BW: <b><span id="bw-tag"></span></b></li>
                     <li>Rule used: <b><span id="rule-used-tag"></span></b></li>
                 </ul>
                 <div id="stats"></div>
@@ -255,6 +256,9 @@
 
             var currentLatency = parseFloat(player.getCurrentLiveLatency(), 10);
             document.getElementById("latency-tag").innerHTML = currentLatency + " secs";
+
+            var availibleBW = Math.round(player.getAverageThroughput("video"));
+            document.getElementById("bw-tag").innerHTML = availibleBW + " Kbps";
 
             document.getElementById("mindrift-tag").innerHTML = settings.streaming.liveCatchUpMinDrift + " secs";
 
