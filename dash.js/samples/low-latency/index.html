@@ -5,6 +5,8 @@
     <title>Low latency live stream instantiation example</title>
 
     <script src="../../dist/dash.all.debug.js"></script>
+    <!-- <script src="BW.js"></script> -->
+
     <!--dash.all.min.js should be used in production over dash.all.debug.js
         Debug files are not compressed or obfuscated making the file size much larger compared with dash.all.min.js-->
     <!--<script src="../../dist/dash.all.min.js"></script>-->
@@ -30,33 +32,33 @@
             /* 
              * Option A: Use default ABR rules
              */
-            // player.updateSettings({
-            // 'streaming': {
-            //     'abr': {
-            //         'useDefaultABRRules': true
-            //     }
-            // }});
-            // ruleUsed = player.getSettings().streaming.abr.ABRStrategy;  // for result logging later
+            player.updateSettings({
+            'streaming': {
+                'abr': {
+                    'useDefaultABRRules': true
+                }
+            }});
+            ruleUsed = player.getSettings().streaming.abr.ABRStrategy;  // for result logging later
 
             /* 
              * Option B: Use custom ABR rules
              */
-            // TgcHeuristicRule //
-            // ruleUsed = 'TgcHeuristicRule';  // for result logging later
-            // player.addABRCustomRule('qualitySwitchRules', 'TgcHeuristicRule', TgcHeuristicRule);
+            // // TgcHeuristicRule //
+            // // ruleUsed = 'TgcHeuristicRule';  // for result logging later
+            // // player.addABRCustomRule('qualitySwitchRules', 'TgcHeuristicRule', TgcHeuristicRule);
 
-            // TgcLearningRule //
-            ruleUsed = 'TgcLearningRule';   // for result logging later
-            player.addABRCustomRule('qualitySwitchRules', 'TgcLearningRule', TgcLearningRule);
+            // // TgcLearningRule //
+            // ruleUsed = 'TgcLearningRule';   // for result logging later
+            // player.addABRCustomRule('qualitySwitchRules', 'TgcLearningRule', TgcLearningRule);
 
-            player.updateSettings({
-                'streaming': {
-                    'abr': {
-                        'useDefaultABRRules': false
-                    }
-                }
-            });
-            // Use custom rule - end
+            // player.updateSettings({
+            //     'streaming': {
+            //         'abr': {
+            //             'useDefaultABRRules': false
+            //         }
+            //     }
+            // });
+            // // Use custom rule - end
 
             // Update UI
             document.querySelector('#rule-used-tag').innerText = ruleUsed;
