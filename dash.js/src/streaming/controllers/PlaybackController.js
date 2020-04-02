@@ -809,6 +809,7 @@ function PlaybackController() {
         // }
         // const amplificationBuffer = Math.max(1, (deltaBuffer / 0.05));
         // const d = deltaBuffer * amplificationBuffer;
+        // // Option A - end
 
         /*
          * Option B: latency- and buffer-based logic are *interwind*
@@ -837,6 +838,7 @@ function PlaybackController() {
         const amplificationBuffer = Math.max(0, (amplificationBase * deltaBuffer / 0.2));   // further amplify for +ve deltaBuffer
         const amplification = amplificationBase + amplificationBuffer;
         const d = deltaLatency * amplification;
+        // Option B - end
 
         // Playback rate must be between (1 - cpr) - (1 + cpr)
         // ex: if cpr is 0.5, it can have values between 0.5 - 1.5
