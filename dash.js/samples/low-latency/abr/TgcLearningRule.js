@@ -234,7 +234,7 @@ class SOMAbrController{
                 somNeuronState.latency,
                 somNeuronState.buffer,
                 somNeuronState.previousBitrate,
-                somNeuronState.QoE];)
+                somNeuronState.QoE];
             // encourage avaiable throughput bitrates
             let throughputWeight=(somNeuronState.throughput>throughput)?1:0.5;
             let weights=[throughputWeight, 0.4, 0.01, 0.00, 0.4]; // throughput, latency, buffer, previousBitrate, QoE 
@@ -250,7 +250,7 @@ class SOMAbrController{
         }
 
         // update current neuron and the neighbourhood with the calculated QoE
-        // will punish current if it is not picked as bmu
+        // will punish current if it is not picked
         this.updateNeurons(currentNeuron,somElements,[throughput,latency,bufferSize,currentBitrateNormalized,QoE]);
 
         // update bmu and neighnours with targetQoE=0, targetLatency=0
