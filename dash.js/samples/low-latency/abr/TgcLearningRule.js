@@ -45,7 +45,7 @@ function TgcLearningRuleClass() {
         const throughputHistory = abrController.getThroughputHistory();
 
         // latency
-        //const latency = throughputHistory.getAverageLatency(mediaType);
+        //const latency = throughputHistory.getAverageLatency(mediaType)/1000;
         let playbackController = PlaybackController(context).getInstance();
         let latency = playbackController.getCurrentLiveLatency();
         if (!latency) latency=0;
@@ -90,7 +90,7 @@ function TgcLearningRuleClass() {
         console.log("QoE: ",normalizedQoEInverse);
 
         // select next quality using SOM
-        switchRequest.quality = somController.getQualityUsingSom(mediaInfo,throughput*1000,latency/1000,currentBufferLevel,currentBitrate,normalizedQoEInverse);
+        switchRequest.quality = somController.getQualityUsingSom(mediaInfo,throughput*1000,latency,currentBufferLevel,currentBitrate,normalizedQoEInverse);
         switchRequest.reason = { throughput: throughput, latency: latency};
         switchRequest.priority = SwitchRequest.PRIORITY.STRONG;
 
