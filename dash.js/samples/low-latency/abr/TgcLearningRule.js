@@ -187,6 +187,16 @@ class SOMAbrController{
         return this.getDistance(aState,bState,[1,1,1,1,1]);
     }
 
+    updateNeurons(winnerNeuron,somElements,x){
+        // update all neurons
+        for (let i =0; i< somElements.length ; i++) {
+            let somNeuron=somElements[i];
+            let sigma=0.1;
+            let neighbourHood=Math.exp(-1*this.getNeuronDistance(somNeuron,winnerNeuron)/(2*sigma**2));
+            this.updateNeuronState(somNeuron,x, neighbourHood);
+        }
+    }
+
     updateNeuronState(neuron, x, neighbourHood){
         let state=neuron.state;
         let w=[0.01,0.01,0.01,0.01,0.01]; // learning rate
@@ -207,14 +217,18 @@ class SOMAbrController{
         throughput=throughput/this.bitrateNormalizationFactor;
         // saturate values higher than 1
         if (throughput>1) throughput=this.getMaxThroughput();
-        currentBitrate=currentBitrate/this.bitrateNormalizationFactor;
+        let currentBitrateNormalized=currentBitrate/this.bitrateNormalizationFactor;
         console.log("getQuality called throughput="+throughput+" latency="+latency+" bufferSize="+bufferSize," currentNBitrate=",currentBitrate," QoE=",QoE);
 
         let minDistance=null;
         let minIndex=null;
         let winnerNeuron=null;
+        let currentNeuron=null;
         for (let i =0; i< somElements.length ; i++) {
             let somNeuron=somElements[i];
+            if (somNeuron.bitrate==currentBitrate){
+                currentNeuron=somNeuron;
+            }
             let somNeuronState=somNeuron.state;
             let somData=[somNeuronState.throughput,
                 somNeuronState.latency,
@@ -224,7 +238,7 @@ class SOMAbrController{
             // give 0 as the targetLatency to find the optimum neuron
             // maximizing QoE = minimizing 1/QoE (~ 0)
             let weights=[0.4, 0.4, 0.05, 0.00, 0.4]; // throughput, latency, buffer, previousBitrate, QoE 
-            let distance=this.getDistance(somData,[throughput,0,bufferSize,currentBitrate,0],weights);
+            let distance=this.getDistance(somData,[throughput,0,bufferSize,currentBitrateNormalized,0],weights);
             if (minDistance==null || distance<minDistance){
                 minDistance=distance;
                 minIndex=somNeuron.qualityIndex;
@@ -233,15 +247,17 @@ class SOMAbrController{
             console.log("distance=",distance);
         }
 
-        // update all neurons
-        for (let i =0; i< somElements.length ; i++) {
-            let somNeuron=somElements[i];
-            let sigma=0.1;
-            let neighbourHood=Math.exp(-1*this.getNeuronDistance(somNeuron,winnerNeuron)/(2*sigma**2));
-            this.updateNeuronState(somNeuron,[throughput,latency,bufferSize,currentBitrate,QoE], neighbourHood);
-        }
+        // update current neuron and the neighbourhood with the calculated QoE
+        // will punish Qoe if it is negative for next time
+        this.updateNeurons(currentNeuron,somElements,[throughput,latency,bufferSize,currentBitrateNormalized,QoE]);
+
+        // update bmu and neighnours with targetQoE=0, targetLatency=0
+        this.updateNeurons(winnerNeuron,somElements,[throughput,0,bufferSize,currentBitrateNormalized,0]);
+
         return minIndex;
     }
+
+    
 }
 
 TgcLearningRuleClass.__dashjs_factory_name = 'TgcLearningRule';
