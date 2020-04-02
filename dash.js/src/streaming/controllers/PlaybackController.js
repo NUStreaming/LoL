@@ -630,6 +630,9 @@ function PlaybackController() {
         if (settings.get().streaming.playbackBufferMin && settings.get().streaming.playbackBufferMax) {
             return tryNeedToCatchUpCustom(
                     settings.get().streaming.liveCatchUpPlaybackRate,
+                    getCurrentLiveLatency(),
+                    mediaPlayerModel.getLiveDelay(),
+                    settings.get().streaming.liveCatchUpMinDrift,
                     getBufferLevel(),
                     settings.get().streaming.playbackBufferMin,
                     settings.get().streaming.playbackBufferMax
@@ -651,9 +654,9 @@ function PlaybackController() {
     }
 
     // TGC addition to allow estimatation of future playback rate
-    function tryNeedToCatchUpCustom(liveCatchUpPlaybackRate, currentBuffer, playbackBufferMin, playbackBufferMax) {
+    function tryNeedToCatchUpCustom(liveCatchUpPlaybackRate, currentLiveLatency, liveDelay, liveCatchUpMinDrift, currentBuffer, playbackBufferMin, playbackBufferMax) {
         return liveCatchUpPlaybackRate > 0 && getTime() > 0 &&
-            (currentBuffer < playbackBufferMin || currentBuffer > playbackBufferMax);
+            ((Math.abs(currentLiveLatency - liveDelay) > liveCatchUpMinDrift) || (currentBuffer < playbackBufferMin || currentBuffer > playbackBufferMax));
     }
 
     // Original implementation
@@ -703,6 +706,8 @@ function PlaybackController() {
             if (settings.get().streaming.playbackBufferMin && settings.get().streaming.playbackBufferMax) {
                 results = calculateNewPlaybackRateCustom(
                         settings.get().streaming.liveCatchUpPlaybackRate,
+                        getCurrentLiveLatency(), mediaPlayerModel.getLiveDelay(),
+                        settings.get().streaming.liveCatchUpMinDrift,
                         settings.get().streaming.playbackBufferMin, settings.get().streaming.playbackBufferMax,
                         playbackStalled, getBufferLevel(), videoModel.getPlaybackRate());
             } else {
@@ -778,24 +783,60 @@ function PlaybackController() {
     }
 
     // TGC addition to allow estimatation of future playback rate
-    function calculateNewPlaybackRateCustom(liveCatchUpPlaybackRate, playbackBufferMin, playbackBufferMax, pStalled, bufferLevel, currentPlaybackRate) {
-        // Custom playback rate calculation
-        // Similar calculation as the default implementation (above), just that we use buffer instead of latency
+    function calculateNewPlaybackRateCustom(liveCatchUpPlaybackRate, currentLiveLatency, liveDelay, minDrift, playbackBufferMin, playbackBufferMax, pStalled, bufferLevel, currentPlaybackRate) {
+        /*
+         * Option A: latency- and buffer-based logic are *separate*
+         * Extends the default implementation above, by using buffer to adapt playback when latency is safe (latency given priority)
+         */
+        // // Use the default one first since it's latency-based hence likely more impt and given priority
+        // if (tryNeedToCatchUp(liveCatchUpPlaybackRate, currentLiveLatency, liveDelay, minDrift)) {
+        //     return calculateNewPlaybackRate(liveCatchUpPlaybackRate, currentLiveLatency, liveDelay, pStalled, bufferLevel, currentPlaybackRate);
+        // }
+        // // If latency is safe, use buffer to adapt playback
+        // const cpr = liveCatchUpPlaybackRate;
+        // let deltaBuffer;
+        // if (bufferLevel < playbackBufferMin) {
+        //     // Buffer in danger, to decrease playback rate
+        //     deltaBuffer = bufferLevel - playbackBufferMin;
+        // }
+        // else if (bufferLevel > playbackBufferMax) {
+        //     // Buffer in surplus, to increase playback rate
+        //     deltaBuffer = bufferLevel - playbackBufferMax;
+        // }
+        // else {
+        //     // Buffer in safe zone
+        //     deltaBuffer = 0;    // playbackRate = 1
+        // }
+        // const amplificationBuffer = Math.max(1, (deltaBuffer / 0.05));
+        // const d = deltaBuffer * amplificationBuffer;
+
+        /*
+         * Option B: latency- and buffer-based logic are *interwind*
+         * Reworks the default implementation above, by amplifying/dampening latency's playback rate effect given surplus/shortage of buffer (deltaBuffer)
+         * (Todo: We don't dampen for now as it increases latency significantly, not sure why.. Would slowing playback delay the request time for next segment? Shouldn't be the case..)
+         */
         const cpr = liveCatchUpPlaybackRate;
+        const deltaLatency = currentLiveLatency - liveDelay;
+
         let deltaBuffer;
         if (bufferLevel < playbackBufferMin) {
-            // To decrease playback rate
-            deltaBuffer = bufferLevel - playbackBufferMin;
+            // Buffer in danger, to decrease playback rate
+            deltaBuffer = bufferLevel - playbackBufferMin;  // -ve value
         }
         else if (bufferLevel > playbackBufferMax) {
-            // To increase playback rate
+            // Buffer in surplus, to increase playback rate
             deltaBuffer = bufferLevel - playbackBufferMax;
         }
         else {
-            // Playback rate = 1
+            // Buffer in safe zone
             deltaBuffer = 0;
         }
-        const d = deltaBuffer * 1;  // probably some amplification factor, don't amplify for now (default val: 5)
+
+        // Calculate final d value w additional amplification based on buffer occupancy
+        const amplificationBase = 5;                                                        // taken from latency-based logic in default dash code
+        const amplificationBuffer = Math.max(0, (amplificationBase * deltaBuffer / 0.2));   // further amplify for +ve deltaBuffer
+        const amplification = amplificationBase + amplificationBuffer;
+        const d = deltaLatency * amplification;
 
         // Playback rate must be between (1 - cpr) - (1 + cpr)
         // ex: if cpr is 0.5, it can have values between 0.5 - 1.5

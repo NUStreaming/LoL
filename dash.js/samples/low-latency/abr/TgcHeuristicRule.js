@@ -202,7 +202,7 @@ function TgcHeuristicRuleClass() {
                 let needToCatchUp;
                 if (useCustomPlaybackControl) {
                     // Custom method
-                    needToCatchUp = playbackController.tryNeedToCatchUpCustom(liveCatchUpPlaybackRate, tmpBuffer, playbackBufferMin, playbackBufferMax);
+                    needToCatchUp = playbackController.tryNeedToCatchUpCustom(liveCatchUpPlaybackRate, currentLatency, liveDelay, liveCatchUpMinDrift, tmpBuffer, playbackBufferMin, playbackBufferMax);
                 } else {
                     // Default method
                     needToCatchUp = playbackController.tryNeedToCatchUp(liveCatchUpPlaybackRate, currentLatency, liveDelay, liveCatchUpMinDrift);
@@ -212,7 +212,7 @@ function TgcHeuristicRuleClass() {
                 if (needToCatchUp) {
                     let newRate;
                     if (useCustomPlaybackControl) {
-                        newRate = playbackController.calculateNewPlaybackRateCustom(liveCatchUpPlaybackRate, playbackBufferMin, playbackBufferMax, playbackStalled, tmpBuffer, currentPlaybackSpeed).newRate;
+                        newRate = playbackController.calculateNewPlaybackRateCustom(liveCatchUpPlaybackRate, currentLatency, liveDelay, liveCatchUpMinDrift, playbackBufferMin, playbackBufferMax, playbackStalled, tmpBuffer, currentPlaybackSpeed).newRate;
                     } else {
                         newRate = playbackController.calculateNewPlaybackRate(liveCatchUpPlaybackRate, currentLatency, liveDelay, playbackStalled, tmpBuffer, currentPlaybackSpeed).newRate;
                     }
@@ -258,9 +258,9 @@ function TgcHeuristicRuleClass() {
         });
 
         // For debugging
-        console.log('### bestOption: ' + bestOption + ' ###');
-        console.log('### bestQoeInfo ###');
-        console.log(bestQoeInfo);
+        // console.log('### bestOption: ' + bestOption + ' ###');
+        // console.log('### bestQoeInfo ###');
+        // console.log(bestQoeInfo);
 
         let nextQuality;
         if (bestOption.length < 1) { 
