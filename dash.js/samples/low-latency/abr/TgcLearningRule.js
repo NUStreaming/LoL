@@ -234,10 +234,12 @@ class SOMAbrController{
                 somNeuronState.latency,
                 somNeuronState.buffer,
                 somNeuronState.previousBitrate,
-                somNeuronState.QoE];
+                somNeuronState.QoE];)
+            // encourage avaiable throughput bitrates
+            let throughputWeight=(somNeuronState.throughput>throughput)?1:0.5;
+            let weights=[throughputWeight, 0.4, 0.01, 0.00, 0.4]; // throughput, latency, buffer, previousBitrate, QoE 
             // give 0 as the targetLatency to find the optimum neuron
-            // maximizing QoE = minimizing 1/QoE (~ 0)
-            let weights=[0.4, 0.4, 0.05, 0.00, 0.4]; // throughput, latency, buffer, previousBitrate, QoE 
+            // maximizing QoE = minimizing 1/QoE (~ 0
             let distance=this.getDistance(somData,[throughput,0,bufferSize,currentBitrateNormalized,0],weights);
             if (minDistance==null || distance<minDistance){
                 minDistance=distance;
@@ -248,7 +250,7 @@ class SOMAbrController{
         }
 
         // update current neuron and the neighbourhood with the calculated QoE
-        // will punish Qoe if it is negative for next time
+        // will punish current if it is not picked as bmu
         this.updateNeurons(currentNeuron,somElements,[throughput,latency,bufferSize,currentBitrateNormalized,QoE]);
 
         // update bmu and neighnours with targetQoE=0, targetLatency=0
