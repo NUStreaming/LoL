@@ -4,15 +4,15 @@
     <meta charset="utf-8"/>
     <title>Low latency live stream instantiation example</title>
 
-    <script src="../../dist/dash.all.debug.js"></script>
-    <!-- <script src="BW.js"></script> -->
+    <!-- <script src="../../dist/dash.all.debug.js"></script> -->
+    <script src="BW.js"></script>
 
     <!--dash.all.min.js should be used in production over dash.all.debug.js
         Debug files are not compressed or obfuscated making the file size much larger compared with dash.all.min.js-->
     <!--<script src="../../dist/dash.all.min.js"></script>-->
 
-    <!-- <script src="abr/deprecated/TgcHeuristicRule.js" class="code"></script> -->
-    <!-- <script src="abr/deprecated/TgcLearningRule.js" class="code"></script> -->
+    <script src="abr/TgcHeuristicRule.js" class="code"></script>
+    <script src="abr/TgcLearningRule.js" class="code"></script>
     <script src="abr/TgcHybridRule.js" class="code"></script>
     <script src="abr/QoeEvaluator.js" class="code"></script>
 
@@ -49,12 +49,12 @@
             // // player.addABRCustomRule('qualitySwitchRules', 'TgcHeuristicRule', TgcHeuristicRule);
 
             // // TgcLearningRule //
-            // // ruleUsed = 'TgcLearningRule';   // for result logging later
-            // // player.addABRCustomRule('qualitySwitchRules', 'TgcLearningRule', TgcLearningRule);
+            // ruleUsed = 'TgcLearningRule';   // for result logging later
+            // player.addABRCustomRule('qualitySwitchRules', 'TgcLearningRule', TgcLearningRule);
 
             // // TgcHybridRule //
-            // ruleUsed = 'TgcHybridRule';   // for result logging later
-            // player.addABRCustomRule('qualitySwitchRules', 'TgcHybridRule', TgcHybridRule);
+            // // ruleUsed = 'TgcHybridRule';   // for result logging later
+            // // player.addABRCustomRule('qualitySwitchRules', 'TgcHybridRule', TgcHybridRule);
 
             // player.updateSettings({
             //     'streaming': {

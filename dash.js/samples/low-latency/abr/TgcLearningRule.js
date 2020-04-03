@@ -16,7 +16,7 @@ function TgcLearningRuleClass() {
         BUFFER_STATE: 'BufferState'
     }
 
-    const somController = new SOMAbrController();
+    const learningController = new LearningAbrController();
     let qoeEvaluator = new QoeEvaluator();
 
     function setup() {
@@ -30,30 +30,30 @@ function TgcLearningRuleClass() {
         let mediaType = rulesContext.getMediaInfo().type;
         let metrics = metricsModel.getMetricsFor(mediaType, true);
 
-        // Get current bitrate
+        // Dash controllers
         let streamController = StreamController(context).getInstance();
+        let playbackController = PlaybackController(context).getInstance();
         let abrController = rulesContext.getAbrController();
+
+        // Additional stuff for Learning rule
         let current = abrController.getQualityFor(mediaType, streamController.getActiveStreamInfo());
 
-        // Additional stuff
+        // Additional stuff for both
         const mediaInfo = rulesContext.getMediaInfo();
         const bufferStateVO = dashMetrics.getLatestBufferInfoVO(mediaType, true, metricsConstants.BUFFER_STATE);
         const scheduleController = rulesContext.getScheduleController();
         const currentBufferLevel = dashMetrics.getCurrentBufferLevel(mediaType, true);
         const streamInfo = rulesContext.getStreamInfo();
         const isDynamic = streamInfo && streamInfo.manifestInfo ? streamInfo.manifestInfo.isDynamic : null;
-        const throughputHistory = abrController.getThroughputHistory();
 
-        // latency
-        //const latency = throughputHistory.getAverageLatency(mediaType)/1000;
-        let playbackController = PlaybackController(context).getInstance();
         let latency = playbackController.getCurrentLiveLatency();
         if (!latency) latency=0;
         const playbackRate = playbackController.getPlaybackRate();
         
         /*
-         * decide which throughput value to use
+         * Throughput
          */
+        const throughputHistory = abrController.getThroughputHistory();
         // const throughput = throughputHistory.getAverageThroughput(mediaType, isDynamic);
         const throughput = throughputHistory.getSafeAverageThroughput(mediaType, isDynamic);
         console.log('[TgcLearningRule] throughput: ' + Math.round(throughput) + 'kbps');
@@ -67,18 +67,19 @@ function TgcLearningRuleClass() {
         }
 
         // QoE parameters
-        let bitrateList=mediaInfo.bitrateList;
+        let bitrateList = mediaInfo.bitrateList;  // [{bandwidth: 200000, width: 640, height: 360}, ...]
         let segmentDuration = rulesContext.getRepresentationInfo().fragmentDuration;
         let minBitrateKbps = bitrateList[0].bandwidth / 1000.0;                         // min bitrate level
         let maxBitrateKbps = bitrateList[bitrateList.length - 1].bandwidth / 1000.0;    // max bitrate level
-        for (let i=0;i<bitrateList.length;i++){
-            let b=bitrateList[i].bandwidth/1000.0;
-            if (b>maxBitrateKbps) maxBitrateKbps=b;
-            else if (b<minBitrateKbps) minBitrateKbps=b;
+        for (let i = 0; i < bitrateList.length; i++) {  // in case bitrateList is not sorted as expeected
+            let b = bitrateList[i].bandwidth / 1000.0;
+            if (b > maxBitrateKbps) maxBitrateKbps = b;
+            else if (b < minBitrateKbps) minBitrateKbps = b;
         }
 
-        let currentBitrate=bitrateList[current].bandwidth;
-        let currentBitrateKbps= currentBitrate / 1000.0;
+        // Learning rule pre-calculations
+        let currentBitrate = bitrateList[current].bandwidth;
+        let currentBitrateKbps = currentBitrate / 1000.0;
         let httpRequest = dashMetrics.getCurrentHttpRequest(mediaType, true);
         let lastFragmentDownloadTime = (httpRequest.tresponse.getTime() - httpRequest.trequest.getTime())/1000;
         let segmentRebufferTime = lastFragmentDownloadTime>segmentDuration?lastFragmentDownloadTime-segmentDuration:0;
@@ -89,8 +90,10 @@ function TgcLearningRuleClass() {
         let normalizedQoEInverse= currentQoeInfo.totalQoe>0 ? 1 / currentQoeInfo.totalQoe : 1;
         console.log("QoE: ",normalizedQoEInverse);
 
-        // select next quality using SOM
-        switchRequest.quality = somController.getQualityUsingSom(mediaInfo,throughput*1000,latency/1000,currentBufferLevel,currentBitrate,normalizedQoEInverse);
+        /*
+         * Select next quality
+         */
+        switchRequest.quality = learningController.getNextQuality(mediaInfo,throughput*1000,latency/1000,currentBufferLevel,currentBitrate,normalizedQoEInverse);
         switchRequest.reason = { throughput: throughput, latency: latency};
         switchRequest.priority = SwitchRequest.PRIORITY.STRONG;
 
@@ -114,10 +117,10 @@ function TgcLearningRuleClass() {
     return instance;
 }
 
-/* ************************
+/* *******************************
 *    Main abr logic
-* ************************ */
-class SOMAbrController{
+* ******************************* */
+class LearningAbrController {
 
     constructor() {
         this.somBitrateNeurons=null;
@@ -211,14 +214,16 @@ class SOMAbrController{
                     "previousBitrate=",state.previousBitrate,"QoE=",state.QoE);
     }
 
-    getQualityUsingSom(mediaInfo, throughput, latency, bufferSize, currentBitrate,QoE){
+    getNextQuality(mediaInfo, throughput, latency, bufferSize, currentBitrate,QoE){
+        console.log('###### [TgcLearningRule] LearningAbrController.getNextQuality().. ######');
+
         let somElements=this.getSomBitrateNeurons(mediaInfo);
         // normalize throughput
         throughput=throughput/this.bitrateNormalizationFactor;
         // saturate values higher than 1
         if (throughput>1) throughput=this.getMaxThroughput();
         let currentBitrateNormalized=currentBitrate/this.bitrateNormalizationFactor;
-        console.log("getQuality called throughput="+throughput+" latency="+latency+" bufferSize="+bufferSize," currentNBitrate=",currentBitrate," QoE=",QoE);
+        console.log("getNextQuality called throughput="+throughput+" latency="+latency+" bufferSize="+bufferSize," currentNBitrate=",currentBitrate," QoE=",QoE);
 
         let minDistance=null;
         let minIndex=null;
@@ -258,8 +263,6 @@ class SOMAbrController{
 
         return minIndex;
     }
-
-    
 }
 
 TgcLearningRuleClass.__dashjs_factory_name = 'TgcLearningRule';

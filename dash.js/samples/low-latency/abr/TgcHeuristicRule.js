@@ -18,8 +18,7 @@ function TgcHeuristicRuleClass() {
         BUFFER_STATE: 'BufferState'
     }
 
-    // Store past throughputs to calculate harmonic mean for future bandwidth prediction
-    let pastThroughputs = [];
+    const heuristicController = new HeuristicAbrController();
 
     function setup() {
     }
@@ -32,35 +31,40 @@ function TgcHeuristicRuleClass() {
         let mediaType = rulesContext.getMediaInfo().type;
         let metrics = metricsModel.getMetricsFor(mediaType, true);
 
+        // Dash controllers
         let streamController = StreamController(context).getInstance();
         let playbackController = PlaybackController(context).getInstance();
-        let mediaPlayerModel = MediaPlayerModel(context).getInstance();
-
-        // Get current bitrate
         let abrController = rulesContext.getAbrController();
-        let current = abrController.getQualityFor(mediaType, streamController.getActiveStreamInfo());
+        
+        // Additional stuff for Heuristic rule
+        let mediaPlayerModel = MediaPlayerModel(context).getInstance();
+        let liveDelay = mediaPlayerModel.getLiveDelay();  
 
-        // Additional stuff
+        // Additional stuff for both
         const mediaInfo = rulesContext.getMediaInfo();
-        const bitrateList = mediaInfo.bitrateList;  // [{bandwidth: 200000, width: 640, height: 360}, ...]
+        // const bitrateList = mediaInfo.bitrateList;  // [{bandwidth: 200000, width: 640, height: 360}, ...]
         const bufferStateVO = dashMetrics.getLatestBufferInfoVO(mediaType, true, metricsConstants.BUFFER_STATE);
         const scheduleController = rulesContext.getScheduleController();
         const currentBufferLevel = dashMetrics.getCurrentBufferLevel(mediaType, true);
-        // console.log('** currentBufferLevel: ' + currentBufferLevel);
         const streamInfo = rulesContext.getStreamInfo();
         const isDynamic = streamInfo && streamInfo.manifestInfo ? streamInfo.manifestInfo.isDynamic : null;
-        const throughputHistory = abrController.getThroughputHistory();
-        const latency = playbackController.getCurrentLiveLatency();
+        
+        let latency = playbackController.getCurrentLiveLatency();
+        if (!latency) latency = 0;
         const playbackRate = playbackController.getPlaybackRate();
-        const fragmentDuration = rulesContext.getRepresentationInfo().fragmentDuration;
+
+        // const throughputHistory = abrController.getThroughputHistory();
+        // const latency = playbackController.getCurrentLiveLatency();
+        // const playbackRate = playbackController.getPlaybackRate();
+        // const fragmentDuration = rulesContext.getRepresentationInfo().fragmentDuration;
 
         /*
-         * Decide which throughput value to use
+         * Throughput
          */
+        const throughputHistory = abrController.getThroughputHistory();
         // const throughput = throughputHistory.getAverageThroughput(mediaType, isDynamic);
         const throughput = throughputHistory.getSafeAverageThroughput(mediaType, isDynamic);
-        pastThroughputs.push(throughput);
-        // console.log('[TgcHeuristicRule] throughput: ' + Math.round(throughput) + 'kbps');
+        console.log('[TgcHeuristicRule] throughput: ' + Math.round(throughput) + 'kbps');
 
         if (isNaN(throughput)) {
             return switchRequest;
@@ -70,9 +74,56 @@ function TgcHeuristicRuleClass() {
             return switchRequest;
         }
 
-        /* ************************
-         *    Main abr logic
-         * ************************ */
+        // QoE parameters
+        let bitrateList = mediaInfo.bitrateList;  // [{bandwidth: 200000, width: 640, height: 360}, ...]
+        let segmentDuration = rulesContext.getRepresentationInfo().fragmentDuration;
+        let minBitrateKbps = bitrateList[0].bandwidth / 1000.0;                         // min bitrate level
+        let maxBitrateKbps = bitrateList[bitrateList.length - 1].bandwidth / 1000.0;    // max bitrate level
+        for (let i = 0; i < bitrateList.length; i++){
+            let b = bitrateList[i].bandwidth / 1000.0;
+            if (b > maxBitrateKbps) maxBitrateKbps = b;
+            else if (b < minBitrateKbps) minBitrateKbps = b;
+        }
+
+        /*
+         * Select next quality
+         */
+        switchRequest.quality = heuristicController.getNextQuality(segmentDuration, bitrateList, latency, currentBufferLevel, playbackRate, throughput, liveDelay, player, playbackController, abrController);
+        switchRequest.reason = { throughput: throughput, latency: latency};
+        switchRequest.priority = SwitchRequest.PRIORITY.STRONG;
+
+        // Todo - check what is this for
+        scheduleController.setTimeToLoadDelay(0);
+
+        // logger.debug('[' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
+        console.log('[TgcHeuristicRule][' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
+
+        return switchRequest;
+    }
+
+    instance = {
+        getMaxIndex: getMaxIndex
+    };
+
+    setup();
+
+    return instance;
+}
+
+/* *******************************
+*    Main abr logic
+* ******************************* */
+class HeuristicAbrController{
+
+    constructor() {
+        // Store past throughputs to calculate harmonic mean for future bandwidth prediction
+        this.pastThroughputs = [];
+    }
+
+    getNextQuality(segmentDuration, bitrateList, latency, currentBufferLevel, playbackRate, throughput, liveDelay, player, playbackController, abrController) {
+        console.log('###### [TgcHeuristicRule] HeuristicAbrController.getNextQuality().. ######');
+        // Update throughput value
+        this.pastThroughputs.push(throughput);
 
         let futureSegmentCount = 5;     // lookahead window
         // let futureSegmentCount = 2;     // lookahead window - small
@@ -81,25 +132,29 @@ function TgcHeuristicRuleClass() {
         let bestQoeInfo = {};
 
         // Qoe stuff
-        let qoeEvaluator = new QoeEvaluator();
-        let segmentDuration = fragmentDuration;
+        let qoeEvaluatorTmp = new QoeEvaluator();
         let minBitrateKbps = bitrateList[0].bandwidth / 1000.0;                         // min bitrate level
         let maxBitrateKbps = bitrateList[bitrateList.length - 1].bandwidth / 1000.0;    // max bitrate level
+        for (let i = 0; i < bitrateList.length; i++) {   // in case bitrateList is not sorted as expeected
+            let b = bitrateList[i].bandwidth / 1000.0;
+            if (b > maxBitrateKbps) maxBitrateKbps = b;
+            else if (b < minBitrateKbps) minBitrateKbps = b;
+        }
 
         // Iterate all possible combinations of bitrates
         // (numBitrates^futureSegmentCount e.g. 3^5 = 243 options)
         let qualityList = [];
         bitrateList.forEach(function (bitrateInfo, index) { qualityList.push(index); });
-        let options = getPermutations(qualityList, futureSegmentCount);
+        let options = this.getPermutations(qualityList, futureSegmentCount);
         // console.log(options.length); // e.g. 243
 
         // For each option, compute reward and identify option with maxReward
-        options.forEach(function (segments, optionIndex) {
+        options.forEach((segments, optionIndex) => {
             // console.log('------------- Option: ' + segments + ' -------------');
 
             // Set up new (per-segment) Qoe evaluation for each option
-            qoeEvaluator.setupPerSegmentQoe(segmentDuration, maxBitrateKbps, minBitrateKbps);
-            // qoeEvaluator.setupPerChunkQoe((0.5/15), maxBitrateKbps, minBitrateKbps);
+            qoeEvaluatorTmp.setupPerSegmentQoe(segmentDuration, maxBitrateKbps, minBitrateKbps);
+            // qoeEvaluatorTmp.setupPerChunkQoe((0.5/15), maxBitrateKbps, minBitrateKbps);
 
             // Set up tmpBuffer to simulate and estimate rebuffer time for each future segment
             let tmpBuffer = currentBufferLevel;
@@ -109,11 +164,11 @@ function TgcHeuristicRuleClass() {
 
             // Estimate futureBandwidth as harmonic mean of past X throughput values
             let pastThroughputCount = 5;
-            let futureBandwidthKbps = calculateHarmonicMean(pastThroughputs.slice((pastThroughputCount * -1)));
+            let futureBandwidthKbps = this.calculateHarmonicMean(this.pastThroughputs.slice(pastThroughputCount * -1));
             // console.log('Estimated futureBandwidthKbps: ' + futureBandwidthKbps);
 
             // For each segment in lookahead window (window size: futureSegmentCount)
-            segments.forEach(function (quality, segmentIndex) {
+            segments.forEach((quality, segmentIndex) => {
                 // console.log('### Segment, quality: ' + quality + ' ###');
                 // Metrics required for each future segment
                 let segmentBitrateKbps = bitrateList[quality].bandwidth / 1000.0;
@@ -183,7 +238,7 @@ function TgcHeuristicRuleClass() {
                  * Determine playbackSpeed after the download of this future segment
                  */
                 let liveCatchUpPlaybackRate = player.getSettings().streaming.liveCatchUpPlaybackRate;   // user-specified playbackRate bound
-                let liveDelay = mediaPlayerModel.getLiveDelay();                                        // user-specified latency target
+                // let liveDelay = mediaPlayerModel.getLiveDelay();                                        // user-specified latency target
                 let liveCatchUpMinDrift = player.getSettings().streaming.liveCatchUpMinDrift            // user-specified min. drift (between latency target and actual latency)
                 let playbackStalled = false;    // calc pbSpeed -after- download of future segment, hence there will not be any stall since the segment is assumed to have just completed download
                 let futurePlaybackSpeed;
@@ -237,7 +292,7 @@ function TgcHeuristicRuleClass() {
                 let futureLatency = currentLatency - catchupDuration;
                 // console.log('currentLatency: ' + currentLatency + ', catchupDuration: ' + catchupDuration + ', futureLatency: ' + futureLatency);
 
-                qoeEvaluator.logSegmentMetrics(segmentBitrateKbps, segmentRebufferTime, futureLatency, futurePlaybackSpeed);
+                qoeEvaluatorTmp.logSegmentMetrics(segmentBitrateKbps, segmentRebufferTime, futureLatency, futurePlaybackSpeed);
 
                 // Update values for next segment loop
                 currentLatency = futureLatency;
@@ -245,7 +300,7 @@ function TgcHeuristicRuleClass() {
             });
 
             // Calculate potential reward for this option
-            let currentQoeInfo = qoeEvaluator.getPerSegmentQoe();
+            let currentQoeInfo = qoeEvaluatorTmp.getPerSegmentQoe();
             // console.log('### QoeInfo ###');
             // console.log(currentQoeInfo);
 
@@ -258,9 +313,9 @@ function TgcHeuristicRuleClass() {
         });
 
         // For debugging
-        // console.log('### bestOption: ' + bestOption + ' ###');
-        // console.log('### bestQoeInfo ###');
-        // console.log(bestQoeInfo);
+        console.log('### bestOption: ' + bestOption + ' ###');
+        console.log('### bestQoeInfo ###');
+        console.log(bestQoeInfo);
 
         let nextQuality;
         if (bestOption.length < 1) { 
@@ -270,20 +325,10 @@ function TgcHeuristicRuleClass() {
             nextQuality = bestOption[0];
         }
 
-        switchRequest.quality = nextQuality;
-        switchRequest.reason = { throughput: throughput, latency: latency};
-        switchRequest.priority = SwitchRequest.PRIORITY.STRONG;
-
-        // Todo - check what is this for
-        scheduleController.setTimeToLoadDelay(0);
-
-        // logger.debug('[' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
-        console.log('[TgcHeuristicRule][' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
-
-        return switchRequest;
+        return nextQuality;
     }
 
-    function getPermutations(list, length) {
+    getPermutations(list, length) {
         // Copy initial values as arrays
         var perm = list.map(function(val) {
             return [val];
@@ -307,18 +352,9 @@ function TgcHeuristicRuleClass() {
         };
         // Start with size 1 because of initial values
         return generate(perm, length, 1);
-    };
-
-    function calculateArithmeticMean(arrOfValues) {
-        let sum = 0;
-        arrOfValues.forEach(function (value, index) {
-            sum += value;
-        });
-        // Return arithmetic mean
-        return (sum / arrOfValues.length);
     }
 
-    function calculateHarmonicMean(arrOfValues) {
+    calculateHarmonicMean(arrOfValues) {
         let sumOfReciprocals = 0;
         arrOfValues.forEach(function (value, index) {
             sumOfReciprocals += (1.0 / value);
@@ -327,13 +363,6 @@ function TgcHeuristicRuleClass() {
         return (1.0 / (sumOfReciprocals / arrOfValues.length));
     }
 
-    instance = {
-        getMaxIndex: getMaxIndex
-    };
-
-    setup();
-
-    return instance;
 }
 
 TgcHeuristicRuleClass.__dashjs_factory_name = 'TgcHeuristicRule';
