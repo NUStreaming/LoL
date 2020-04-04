@@ -230,7 +230,7 @@ class LearningAbrController {
         let currentBitrateNormalized=currentBitrate/this.bitrateNormalizationFactor;
         latency=latency/this.latencyNormalizationFactor;
         // normalize QoE
-        QoE =  (QoE<this.bitrateNormalizationFactor) ? QoE / this.bitrateNormalizationFactor : 1;
+        let QoENormalized =  (QoE<this.bitrateNormalizationFactor) ? QoE / this.bitrateNormalizationFactor : 1;
 
         const targetLatency=0;
         const targetQoe=1;
@@ -256,13 +256,13 @@ class LearningAbrController {
                 somNeuronState.previousBitrate,
                 somNeuronState.QoE];
             
-            let throughputWeight=0.5;
+            let throughputWeight=0.4;
             if (somNeuron.bitrate>throughput-throughputDelta && somNeuron.bitrate!=this.minBitrate){
                 // encourage to pick smaller bitrates
                 throughputWeight=4;
             }
             // Qoe is very important if it is decreasing increase the weight!
-            let QoEWeight=(QoE<0.1)?1:0.4;
+            let QoEWeight = (QoE<50) ? 1 : 0.4;
             let weights=[throughputWeight, 0.4, 0.1, 0.00, QoEWeight]; // throughput, latency, buffer, previousBitrate, QoE 
             // give 0 as the targetLatency to find the optimum neuron
             // targetQoE = 1
@@ -277,7 +277,7 @@ class LearningAbrController {
 
         // update current neuron and the neighbourhood with the calculated QoE
         // will punish current if it is not picked
-        this.updateNeurons(currentNeuron,somElements,[throughputNormalized,latency,bufferSize,currentBitrateNormalized,QoE]);
+        this.updateNeurons(currentNeuron,somElements,[throughputNormalized,latency,bufferSize,currentBitrateNormalized,QoENormalized]);
 
         // update bmu and neighnours with targetQoE=1, targetLatency=0
         this.updateNeurons(winnerNeuron,somElements,[throughputNormalized,targetLatency,targetBufferLevel,currentBitrateNormalized,targetQoe]);
