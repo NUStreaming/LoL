@@ -92,15 +92,14 @@ function TgcHybridRuleClass() {
         qoeEvaluator.setupPerSegmentQoe(segmentDuration, maxBitrateKbps, minBitrateKbps);
         qoeEvaluator.logSegmentMetrics(currentBitrateKbps, segmentRebufferTime, latency, playbackRate);
         let currentQoeInfo = qoeEvaluator.getPerSegmentQoe();
-        // let normalizedQoEInverse=  currentQoeInfo.totalQoe / currentBitrateKbps;
-        let normalizedQoEInverse= currentQoeInfo.totalQoe>0 ? 1 / currentQoeInfo.totalQoe : 1;
-        console.log("QoE: ",normalizedQoEInverse);
+        let currentTotalQoe = currentQoeInfo.totalQoe;
+        console.log("QoE: ",currentTotalQoe);
 
         /*
          * Select next quality
          */
         // Option A: Use Learning Rule
-        let nextQualityLearning = learningController.getNextQuality(mediaInfo,throughput*1000,latency/1000,currentBufferLevel,currentBitrate,normalizedQoEInverse);
+        let nextQualityLearning = learningController.getNextQuality(mediaInfo,throughput*1000,latency,currentBufferLevel,currentBitrate,currentTotalQoe);
         switchRequest.quality = nextQualityLearning;
 
         // Option B: Use Heuristic Rule
