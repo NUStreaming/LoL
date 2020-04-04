@@ -234,6 +234,7 @@ class LearningAbrController {
 
         const targetLatency=0;
         const targetQoe=1;
+        const targetBufferLevel=1;
         // 10K + video encoding is the recommended throughput
         const throughputDelta=10000;
         
@@ -255,17 +256,17 @@ class LearningAbrController {
                 somNeuronState.previousBitrate,
                 somNeuronState.QoE];
             
-            let throughputWeight=0.4;
+            let throughputWeight=0.5;
             if (somNeuron.bitrate>throughput-throughputDelta && somNeuron.bitrate!=this.minBitrate){
                 // encourage to pick smaller bitrates
-                throughputWeight=10;
+                throughputWeight=4;
             }
             // Qoe is very important if it is decreasing increase the weight!
             let QoEWeight=(QoE<0.1)?1:0.4;
             let weights=[throughputWeight, 0.4, 0.1, 0.00, QoEWeight]; // throughput, latency, buffer, previousBitrate, QoE 
             // give 0 as the targetLatency to find the optimum neuron
             // targetQoE = 1
-            let distance=this.getDistance(somData,[throughputNormalized,targetLatency,bufferSize,currentBitrateNormalized,targetQoe],weights);
+            let distance=this.getDistance(somData,[throughputNormalized,targetLatency,targetBufferLevel,currentBitrateNormalized,targetQoe],weights);
             if (minDistance==null || distance<minDistance){
                 minDistance=distance;
                 minIndex=somNeuron.qualityIndex;
@@ -279,7 +280,7 @@ class LearningAbrController {
         this.updateNeurons(currentNeuron,somElements,[throughputNormalized,latency,bufferSize,currentBitrateNormalized,QoE]);
 
         // update bmu and neighnours with targetQoE=1, targetLatency=0
-        this.updateNeurons(winnerNeuron,somElements,[throughputNormalized,targetLatency,bufferSize,currentBitrateNormalized,targetQoe]);
+        this.updateNeurons(winnerNeuron,somElements,[throughputNormalized,targetLatency,targetBufferLevel,currentBitrateNormalized,targetQoe]);
 
         return minIndex;
     }
