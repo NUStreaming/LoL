@@ -125,6 +125,7 @@ class LearningAbrController {
         this.somBitrateNeurons=null;
         this.bitrateNormalizationFactor=1;
         this.latencyNormalizationFactor=100;
+        this.minBitrate=0;
     }
 
     getSomBitrateNeurons(mediaInfo){
@@ -132,8 +133,12 @@ class LearningAbrController {
             this.somBitrateNeurons = [];
             const bitrateList = mediaInfo.bitrateList;
             let bitrateVector=[];
+            this.minBitrate=bitrateList[0].bandwidth;
             bitrateList.forEach(element => {
                 bitrateVector.push(element.bandwidth);   
+                if (element.bandwidth<this.minBitrate){
+                    this.minBitrate=element.bandwidth;
+                }
             });
             this.bitrateNormalizationFactor=this.getMagnitude(bitrateVector);
             console.log("throughput normalization factor is "+this.bitrateNormalizationFactor);
@@ -219,9 +224,9 @@ class LearningAbrController {
 
         let somElements=this.getSomBitrateNeurons(mediaInfo);
         // normalize throughput
-        throughput=throughput/this.bitrateNormalizationFactor;
+        let throughputNormalized=throughput/this.bitrateNormalizationFactor;
         // saturate values higher than 1
-        if (throughput>1) throughput=this.getMaxThroughput();
+        if (throughputNormalized>1) throughputNormalized=this.getMaxThroughput();
         let currentBitrateNormalized=currentBitrate/this.bitrateNormalizationFactor;
         latency=latency/this.latencyNormalizationFactor;
         // normalize QoE
@@ -229,8 +234,10 @@ class LearningAbrController {
 
         const targetLatency=0;
         const targetQoe=1;
+        // 10K + video encoding is the recommended throughput
+        const throughputDelta=10000;
         
-        console.log("getNextQuality called throughput="+throughput+" latency="+latency+" bufferSize="+bufferSize," currentNBitrate=",currentBitrate," QoE=",QoE);
+        console.log("getNextQuality called throughput="+throughputNormalized+" latency="+latency+" bufferSize="+bufferSize," currentNBitrate=",currentBitrate," QoE=",QoE);
 
         let minDistance=null;
         let minIndex=null;
@@ -248,14 +255,17 @@ class LearningAbrController {
                 somNeuronState.previousBitrate,
                 somNeuronState.QoE];
             
-            // encourage avaiable throughput bitrates
-            let throughputWeight=(somNeuronState.throughput>throughput)?1:0.5;
-            // Qoe is very important if it is negative!
-            let QoEWeight=(QoE<0)?1:0.4;
+            let throughputWeight=0.4;
+            if (somNeuron.bitrate>throughput-throughputDelta && somNeuron.bitrate!=this.minBitrate){
+                // encourage to pick smaller bitrates
+                throughputWeight=10;
+            }
+            // Qoe is very important if it is decreasing increase the weight!
+            let QoEWeight=(QoE<0.1)?1:0.4;
             let weights=[throughputWeight, 0.4, 0.1, 0.00, QoEWeight]; // throughput, latency, buffer, previousBitrate, QoE 
             // give 0 as the targetLatency to find the optimum neuron
             // targetQoE = 1
-            let distance=this.getDistance(somData,[throughput,targetLatency,bufferSize,currentBitrateNormalized,targetQoe],weights);
+            let distance=this.getDistance(somData,[throughputNormalized,targetLatency,bufferSize,currentBitrateNormalized,targetQoe],weights);
             if (minDistance==null || distance<minDistance){
                 minDistance=distance;
                 minIndex=somNeuron.qualityIndex;
@@ -266,10 +276,10 @@ class LearningAbrController {
 
         // update current neuron and the neighbourhood with the calculated QoE
         // will punish current if it is not picked
-        this.updateNeurons(currentNeuron,somElements,[throughput,latency,bufferSize,currentBitrateNormalized,QoE]);
+        this.updateNeurons(currentNeuron,somElements,[throughputNormalized,latency,bufferSize,currentBitrateNormalized,QoE]);
 
         // update bmu and neighnours with targetQoE=1, targetLatency=0
-        this.updateNeurons(winnerNeuron,somElements,[throughput,targetLatency,bufferSize,currentBitrateNormalized,targetQoe]);
+        this.updateNeurons(winnerNeuron,somElements,[throughputNormalized,targetLatency,bufferSize,currentBitrateNormalized,targetQoe]);
 
         return minIndex;
     }
