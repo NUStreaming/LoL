@@ -92,7 +92,7 @@ function TgcLearningRuleClass() {
         /*
          * Select next quality
          */
-        switchRequest.quality = learningController.getNextQuality(mediaInfo,throughput*1000,latency,currentBufferLevel,currentBitrate,currentTotalQoe);
+        switchRequest.quality = learningController.getNextQuality(mediaInfo,throughput*1000,latency,currentBufferLevel,current, currentTotalQoe);
         switchRequest.reason = { throughput: throughput, latency: latency};
         switchRequest.priority = SwitchRequest.PRIORITY.STRONG;
 
@@ -152,7 +152,6 @@ class LearningAbrController {
                         throughput: bitrateList[i].bandwidth/this.bitrateNormalizationFactor,
                         latency: 0,
                         buffer: 0,
-                        previousBitrate: bitrateList[i].bandwidth/this.bitrateNormalizationFactor,
                         QoE: 1
                     }
                 }
@@ -190,9 +189,9 @@ class LearningAbrController {
     }
 
     getNeuronDistance(a, b) {
-        let aState=[a.state.throughput,a.state.latency, a.state.buffer, a.state.previousBitrate, a.state.QoE];
-        let bState=[b.state.throughput,b.state.latency, b.state.buffer, b.state.previousBitrate, b.state.QoE];
-        return this.getDistance(aState,bState,[1,1,1,1,1]);
+        let aState=[a.state.throughput,a.state.latency, a.state.buffer, a.state.QoE];
+        let bState=[b.state.throughput,b.state.latency, b.state.buffer, b.state.QoE];
+        return this.getDistance(aState,bState,[1,1,1,1]);
     }
 
     updateNeurons(winnerNeuron,somElements,x){
@@ -207,19 +206,17 @@ class LearningAbrController {
 
     updateNeuronState(neuron, x, neighbourHood){
         let state=neuron.state;
-        let w=[0.01,0.01,0.01,0.01,0.01]; // learning rate
+        let w=[0.01,0.01,0.01,0.01]; // learning rate
         // console.log("before update: neuron=",neuron.qualityIndex," throughput=",state.throughput," latency=",state.latency," buffer=",state.buffer)
         state.throughput=state.throughput+(x[0]-state.throughput)*w[0]*neighbourHood;
         state.latency=state.latency+(x[1]-state.latency)*w[1]*neighbourHood;
         state.buffer=state.buffer+(x[2]-state.buffer)*w[2]*neighbourHood;
-        state.previousBitrate=state.previousBitrate+(x[3]-state.previousBitrate)*w[3]*neighbourHood;
-        state.QoE=state.QoE+(x[4]-state.QoE)*w[4]*neighbourHood;
+        state.QoE=state.QoE+(x[3]-state.QoE)*w[3]*neighbourHood;
         console.log("after update: neuron=",neuron.qualityIndex,"throughput=",state.throughput,
-                    "latency=",state.latency," buffer=",state.buffer,
-                    "previousBitrate=",state.previousBitrate,"QoE=",state.QoE);
+                    "latency=",state.latency," buffer=",state.buffer,"QoE=",state.QoE);
     }
 
-    getNextQuality(mediaInfo, throughput, latency, bufferSize, currentBitrate,QoE){
+    getNextQuality(mediaInfo, throughput, latency, bufferSize, currentQualityIndex, QoE){
         console.log('###### [TgcLearningRule] LearningAbrController.getNextQuality().. ######');
 
         let somElements=this.getSomBitrateNeurons(mediaInfo);
@@ -227,7 +224,7 @@ class LearningAbrController {
         let throughputNormalized=throughput/this.bitrateNormalizationFactor;
         // saturate values higher than 1
         if (throughputNormalized>1) throughputNormalized=this.getMaxThroughput();
-        let currentBitrateNormalized=currentBitrate/this.bitrateNormalizationFactor;
+        // normalize latency
         latency=latency/this.latencyNormalizationFactor;
         // normalize QoE
         let QoENormalized =  (QoE<this.bitrateNormalizationFactor) ? QoE / this.bitrateNormalizationFactor : 1;
@@ -237,36 +234,39 @@ class LearningAbrController {
         const targetBufferLevel=1;
         // 10K + video encoding is the recommended throughput
         const throughputDelta=10000;
+        const minAllowedQoE=50;
         
-        console.log("getNextQuality called throughput="+throughputNormalized+" latency="+latency+" bufferSize="+bufferSize," currentNBitrate=",currentBitrate," QoE=",QoE);
+        console.log("getNextQuality called throughput="+throughputNormalized+" latency="+latency+" bufferSize="+bufferSize," currentQualityIndex=",currentQualityIndex," QoE=",QoE);
+
+        let currentNeuron=somElements[currentQualityIndex];
+        // update current neuron and the neighbourhood with the calculated QoE
+        // will punish current if it is not picked
+        this.updateNeurons(currentNeuron,somElements,[throughputNormalized,latency,bufferSize,QoENormalized]);
 
         let minDistance=null;
         let minIndex=null;
         let winnerNeuron=null;
-        let currentNeuron=null;
         for (let i =0; i< somElements.length ; i++) {
             let somNeuron=somElements[i];
-            if (somNeuron.bitrate==currentBitrate){
-                currentNeuron=somNeuron;
-            }
             let somNeuronState=somNeuron.state;
             let somData=[somNeuronState.throughput,
                 somNeuronState.latency,
                 somNeuronState.buffer,
-                somNeuronState.previousBitrate,
                 somNeuronState.QoE];
             
+            // calculate weights
             let throughputWeight=0.4;
             if (somNeuron.bitrate>throughput-throughputDelta && somNeuron.bitrate!=this.minBitrate){
                 // encourage to pick smaller bitrates
                 throughputWeight=4;
             }
-            // Qoe is very important if it is decreasing increase the weight!
-            let QoEWeight = (QoE<50) ? 1 : 0.4;
-            let weights=[throughputWeight, 0.4, 0.1, 0.00, QoEWeight]; // throughput, latency, buffer, previousBitrate, QoE 
+            // QoE is very important if it is decreasing increase the weight!
+            let QoEWeight = ( QoE < minAllowedQoE ) ? 1 : 0.4;
+            let weights=[ throughputWeight, 0.4, 0.1, QoEWeight ]; // throughput, latency, buffer, QoE 
+
             // give 0 as the targetLatency to find the optimum neuron
             // targetQoE = 1
-            let distance=this.getDistance(somData,[throughputNormalized,targetLatency,targetBufferLevel,currentBitrateNormalized,targetQoe],weights);
+            let distance=this.getDistance(somData,[throughputNormalized,targetLatency,targetBufferLevel,targetQoe],weights);
             if (minDistance==null || distance<minDistance){
                 minDistance=distance;
                 minIndex=somNeuron.qualityIndex;
@@ -275,12 +275,8 @@ class LearningAbrController {
             console.log("distance=",distance);
         }
 
-        // update current neuron and the neighbourhood with the calculated QoE
-        // will punish current if it is not picked
-        this.updateNeurons(currentNeuron,somElements,[throughputNormalized,latency,bufferSize,currentBitrateNormalized,QoENormalized]);
-
         // update bmu and neighnours with targetQoE=1, targetLatency=0
-        this.updateNeurons(winnerNeuron,somElements,[throughputNormalized,targetLatency,targetBufferLevel,currentBitrateNormalized,targetQoe]);
+        this.updateNeurons(winnerNeuron,somElements,[throughputNormalized,targetLatency,targetBufferLevel,targetQoe]);
 
         return minIndex;
     }

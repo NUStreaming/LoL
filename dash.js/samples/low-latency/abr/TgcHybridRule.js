@@ -99,7 +99,7 @@ function TgcHybridRuleClass() {
          * Select next quality
          */
         // Option A: Use Learning Rule
-        let nextQualityLearning = learningController.getNextQuality(mediaInfo,throughput*1000,latency,currentBufferLevel,currentBitrate,currentTotalQoe);
+        let nextQualityLearning = learningController.getNextQuality(mediaInfo,throughput*1000,latency,currentBufferLevel,current, currentTotalQoe);
         switchRequest.quality = nextQualityLearning;
 
         // Option B: Use Heuristic Rule
