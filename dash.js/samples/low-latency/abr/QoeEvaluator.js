@@ -99,6 +99,17 @@ class QoeEvaluator {
     getPerSegmentQoe() {
         return this.voPerSegmentQoeInfo;
     }
+
+    // copy(qoeEvaluator) {
+    //     let qoeInfo = qoeEvaluator.getPerSegmentQoe();
+    //     this.voPerSegmentQoeInfo = {};
+    //     for (var key in qoeInfo) {
+    //         if (qoeInfo.hasOwnProperty(key)) {
+    //             // copy each key over
+    //             this.voPerSegmentQoeInfo[key] = qoeInfo[key];
+    //         }
+    //     }
+    // }
 }
 
 class QoeInfo {
