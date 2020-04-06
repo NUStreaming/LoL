@@ -1,3 +1,9 @@
+/*
+ * Authors:
+ * May Lim | National University of Singapore | maylim17@u.nus.edu
+ * Mehmet N. Akcay | Ozyegin University | necmettin.akcay@ozu.edu.tr
+ * Abdelhak Bentaleb | National University of Singapore | bentaleb@comp.nus.edu.sg
+ */
 var TgcHeuristicRule;
 
 function TgcHeuristicRuleClass() {
@@ -53,11 +59,6 @@ function TgcHeuristicRuleClass() {
         if (!latency) latency = 0;
         const playbackRate = playbackController.getPlaybackRate();
 
-        // const throughputHistory = abrController.getThroughputHistory();
-        // const latency = playbackController.getCurrentLiveLatency();
-        // const playbackRate = playbackController.getPlaybackRate();
-        // const fragmentDuration = rulesContext.getRepresentationInfo().fragmentDuration;
-
         /*
          * Throughput
          */
@@ -88,14 +89,17 @@ function TgcHeuristicRuleClass() {
         /*
          * Select next quality
          */
-        switchRequest.quality = heuristicController.getNextQuality(segmentDuration, bitrateList, latency, currentBufferLevel, playbackRate, throughput, liveDelay, player, playbackController, abrController);
+        if (currentBufferLevel < 0.2) {
+            console.log('-- buffer in danger');
+            switchRequest.quality = 0;
+        } else {
+            switchRequest.quality = heuristicController.getNextQuality(segmentDuration, bitrateList, latency, currentBufferLevel, playbackRate, throughput, liveDelay, player, playbackController, abrController);
+        }
         switchRequest.reason = { throughput: throughput, latency: latency};
         switchRequest.priority = SwitchRequest.PRIORITY.STRONG;
 
-        // Todo - check what is this for
         scheduleController.setTimeToLoadDelay(0);
 
-        // logger.debug('[' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
         console.log('[TgcHeuristicRule][' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
 
         return switchRequest;
@@ -121,7 +125,6 @@ class HeuristicAbrController{
     }
 
     getNextQuality(segmentDuration, bitrateList, latency, currentBufferLevel, playbackRate, throughput, liveDelay, player, playbackController, abrController) {
-        console.log('###### [TgcHeuristicRule] HeuristicAbrController.getNextQuality().. ######');
         // Update throughput value
         this.pastThroughputs.push(throughput);
 
@@ -214,13 +217,13 @@ class HeuristicAbrController{
 
                 /*
                  * Determine segmentRebufferTime (if any) for this future segment
-                 * *** Todo - Buffer behaviour is segment-based, update to chunk-based buffer download and playback ***
+                 * Future work: Account for playback speed
                  */
                 if (downloadTime > tmpBuffer) { 
                     // Rebuffer case
                     segmentRebufferTime = (downloadTime - tmpBuffer);
                     // Update buffer
-                    tmpBuffer = segmentDuration;    // corrected, to correct further (see todo)
+                    tmpBuffer = segmentDuration;
                     // Update latency
                     currentLatency += segmentRebufferTime;
                 } else {
@@ -238,7 +241,6 @@ class HeuristicAbrController{
                  * Determine playbackSpeed after the download of this future segment
                  */
                 let liveCatchUpPlaybackRate = player.getSettings().streaming.liveCatchUpPlaybackRate;   // user-specified playbackRate bound
-                // let liveDelay = mediaPlayerModel.getLiveDelay();                                        // user-specified latency target
                 let liveCatchUpMinDrift = player.getSettings().streaming.liveCatchUpMinDrift            // user-specified min. drift (between latency target and actual latency)
                 let playbackStalled = false;    // calc pbSpeed -after- download of future segment, hence there will not be any stall since the segment is assumed to have just completed download
                 let futurePlaybackSpeed;
@@ -313,9 +315,9 @@ class HeuristicAbrController{
         });
 
         // For debugging
-        console.log('### bestOption: ' + bestOption + ' ###');
-        console.log('### bestQoeInfo ###');
-        console.log(bestQoeInfo);
+        // console.log('### bestOption: ' + bestOption + ' ###');
+        // console.log('### bestQoeInfo ###');
+        // console.log(bestQoeInfo);
 
         let nextQuality;
         if (bestOption.length < 1) { 

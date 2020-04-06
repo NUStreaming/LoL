@@ -1,3 +1,9 @@
+/*
+ * Authors:
+ * May Lim | National University of Singapore | maylim17@u.nus.edu
+ * Mehmet N. Akcay | Ozyegin University | necmettin.akcay@ozu.edu.tr
+ * Abdelhak Bentaleb | National University of Singapore | bentaleb@comp.nus.edu.sg
+ */
 var TgcLearningRule;
 
 function TgcLearningRuleClass() {
@@ -98,7 +104,6 @@ function TgcLearningRuleClass() {
 
         scheduleController.setTimeToLoadDelay(0);
 
-        // logger.debug('[' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
         if (switchRequest.quality!=current){
             console.log('[TgcLearningRule][' + mediaType + '] requesting switch to index: ', switchRequest.quality, 'Average throughput', Math.round(throughput), 'kbps');
         }
@@ -217,8 +222,6 @@ class LearningAbrController {
     }
 
     getNextQuality(mediaInfo, throughput, latency, bufferSize, currentQualityIndex, QoE){
-        console.log('###### [TgcLearningRule] LearningAbrController.getNextQuality().. ######');
-
         let somElements=this.getSomBitrateNeurons(mediaInfo);
         // normalize throughput
         let throughputNormalized=throughput/this.bitrateNormalizationFactor;

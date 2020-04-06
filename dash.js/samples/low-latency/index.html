@@ -33,37 +33,33 @@
             /* 
              * Option A: Use default ABR rules
              */
-            player.updateSettings({
-            'streaming': {
-                'abr': {
-                    'useDefaultABRRules': true
-                }
-            }});
-            ruleUsed = player.getSettings().streaming.abr.ABRStrategy;  // for result logging later
+            // player.updateSettings({
+            // 'streaming': {
+            //     'abr': {
+            //         'useDefaultABRRules': true
+            //     }
+            // }});
+            // ruleUsed = player.getSettings().streaming.abr.ABRStrategy;  // for result logging later
 
             /* 
              * Option B: Use custom ABR rules
              */
-            // // TgcHeuristicRule //
-            // // ruleUsed = 'TgcHeuristicRule';  // for result logging later
-            // // player.addABRCustomRule('qualitySwitchRules', 'TgcHeuristicRule', TgcHeuristicRule);
+            // TgcHeuristicRule //
+            // ruleUsed = 'TgcHeuristicRule';  // for result logging later
+            // player.addABRCustomRule('qualitySwitchRules', 'TgcHeuristicRule', TgcHeuristicRule);
 
-            // // TgcLearningRule //
-            // ruleUsed = 'TgcLearningRule';   // for result logging later
-            // player.addABRCustomRule('qualitySwitchRules', 'TgcLearningRule', TgcLearningRule);
+            // TgcLearningRule //
+            ruleUsed = 'TgcLearningRule';   // for result logging later
+            player.addABRCustomRule('qualitySwitchRules', 'TgcLearningRule', TgcLearningRule);
 
-            // // TgcHybridRule //
-            // // ruleUsed = 'TgcHybridRule';   // for result logging later
-            // // player.addABRCustomRule('qualitySwitchRules', 'TgcHybridRule', TgcHybridRule);
-
-            // player.updateSettings({
-            //     'streaming': {
-            //         'abr': {
-            //             'useDefaultABRRules': false
-            //         }
-            //     }
-            // });
-            // // Use custom rule - end
+            player.updateSettings({
+                'streaming': {
+                    'abr': {
+                        'useDefaultABRRules': false
+                    }
+                }
+            });
+            // Use custom rule - end
 
             // Update UI
             document.querySelector('#rule-used-tag').innerText = ruleUsed;
@@ -163,13 +159,13 @@
                         <!-- TGC addition for custom playback control -->
                         <br/>
                         <!-- Option A: To use DEFAULT playback control -->
-                        <p><input type="checkbox" id="use-custom-playback-control" name="use-custom-playback-control" style="width: 2em;">
+                        <!-- <p><input type="checkbox" id="use-custom-playback-control" name="use-custom-playback-control" style="width: 2em;"> -->
                         <!-- Option B: To use CUSTOM playback control -->
-                        <!-- <p><input checked type="checkbox" id="use-custom-playback-control" name="use-custom-playback-control" style="width: 2em;"> -->
+                        <p><input checked type="checkbox" id="use-custom-playback-control" name="use-custom-playback-control" style="width: 2em;">
                         <label for="use-custom-playback-control">Use custom playback control</label></p>
                         <p style="font-size: 0.9em;">(Note: these params will only be used if the above checkbox is checked)</p>
                         <p>Playback buffer min. (secs): <input type="number" id="playback-buffer-min" value="0.5" min="0.0" max="2.0" step="0.1"></p>
-                        <p>Playback buffer max. (secs): <input type="number" id="playback-buffer-max" value="0.7" min="0.0" max="2.0" step="0.1"></p>
+                        <p>Playback buffer max. (secs): <input type="number" id="playback-buffer-max" value="0.5" min="0.0" max="2.0" step="0.1"></p>
                         
                         <button type="submit">Apply</button>
                     </fieldset>
