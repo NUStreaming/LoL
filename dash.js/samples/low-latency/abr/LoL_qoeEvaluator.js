@@ -1,7 +1,10 @@
 /*
+ * Authors:
  * May Lim | National University of Singapore | maylim17@u.nus.edu
+ * Mehmet N. Akcay | Ozyegin University | necmettin.akcay@ozu.edu.tr
+ * Abdelhak Bentaleb | National University of Singapore | bentaleb@comp.nus.edu.sg
  *
- * [Usage]
+ * [Usage]:
  * 1. Setup -
  *      let qoeEvaluator = new QoeEvaluator();
  *      qoeEvaluator.setupPerSegmentQoe(segmentDurationSec, maxBitrateKbps, minBitrateKbps);
