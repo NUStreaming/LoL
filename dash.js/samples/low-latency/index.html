@@ -5,16 +5,10 @@
     <title>Low latency live stream instantiation example</title>
 
     <!-- <script src="../../dist/dash.all.debug.js"></script> -->
-    <script src="BW.js"></script>
-
-    <!--dash.all.min.js should be used in production over dash.all.debug.js
-        Debug files are not compressed or obfuscated making the file size much larger compared with dash.all.min.js-->
-    <!--<script src="../../dist/dash.all.min.js"></script>-->
-
-    <script src="abr/TgcHeuristicRule.js" class="code"></script>
-    <script src="abr/TgcLearningRule.js" class="code"></script>
-    <script src="abr/TgcHybridRule.js" class="code"></script>
-    <script src="abr/QoeEvaluator.js" class="code"></script>
+    <script src="LoL_tputMeasurement.js"></script>
+    <script src="abr/LoL_heuristicRule.js" class="code"></script>
+    <script src="abr/LoL_learningRule.js" class="code"></script>
+    <script src="abr/LoL_qoeEvaluator.js" class="code"></script>
 
     <script class="code">
         var player, targetLatency, minDrift, catchupPlaybackRate;
@@ -333,5 +327,3 @@
 <script src="../highlighter.js"></script>
 </body>
 </html>
-
-
