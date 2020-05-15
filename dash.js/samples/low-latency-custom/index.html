@@ -475,7 +475,7 @@
                 // constantly update overall metrics value with the latest cumulative metrics
                 window.abrHistory.overall = history;
                 qoeEvaluator.logSegmentMetrics(currentMetrics.segmentBitrateKbps, 
-                                                currentMetrics.stallDurationMs/1000, 
+                                                currentMetrics.segmentStallDurationMs/1000, 
                                                 currentLatency, currentMetrics.playbackSpeed);
             });
 
