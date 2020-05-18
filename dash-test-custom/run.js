@@ -6,7 +6,7 @@ const stats = require("./stats");
 const CHROME_PATH =
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
-const {QoeEvaluator, QoeInfo} = require("../dash.js/samples/low-latency/abr/QoeEvaluator.js");
+const {QoeEvaluator, QoeInfo} = require("../dash.js/samples/low-latency/abr/LoL_QoeEvaluator.js");
 
 let patterns;
 if (process.env.npm_package_config_ffmpeg_profile === 'PROFILE_FAST') {
