@@ -130,6 +130,8 @@ function EventController() {
                 }
                 inbandEvents[event.id] = event;
                 logger.debug('Add inband event with id ' + event.id);
+                // refresh manifest added by makcay
+                refreshManifest();
             } else {
                 logger.debug('Repeated event with id ' + event.id);
             }

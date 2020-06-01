@@ -191,6 +191,7 @@ class DashRequestHandler(hs.BaseHTTPRequestHandler):
         return encoded_path
 
     def _serve_local(self, path):
+        os.system("java -jar mp4parser/target/EmsgAppender.jar "+path)
         with open(path, 'rb') as infile:
             stat = os.fstat(infile.fileno())
 
@@ -221,7 +222,20 @@ class DashRequestHandler(hs.BaseHTTPRequestHandler):
 
             return
 
-        self.send_response(HTTPStatus.OK)
+        #set emsg at the start of segment
+        chunk=0
+        f=open("ds.tmp","wb")
+        while True:
+            data = ds.read(chunk)
+            if len(data) == 0:
+                break
+            chunk += 1
+            f.write(data)
+        f.close()
+        self._logger.info('serve local: ds.tmp')
+        return self._serve_local("ds.tmp")
+
+        """self.send_response(HTTPStatus.OK)
         self.send_header('Transfer-Encoding', 'chunked')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
@@ -237,7 +251,7 @@ class DashRequestHandler(hs.BaseHTTPRequestHandler):
 
             self.wfile.write(hex(len(data))[2:].encode('ascii') + b'\r\n')
             self.wfile.write(data)
-            self.wfile.write(b'\r\n')
+            self.wfile.write(b'\r\n')""" 
 
     def do_POST(self):
         self._log_request()
