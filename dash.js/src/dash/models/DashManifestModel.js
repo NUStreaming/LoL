@@ -51,12 +51,9 @@ function DashManifestModel() {
         logger,
         errHandler,
         BASE64;
-    /*
-     * maylim:
-     * temp fix to bypass bug with prerequestSegments to get CTE working
-     */
-    // const prerequestSegments = true;
-    const prerequestSegments = false;
+
+    const prerequestSegments = true;
+    // const prerequestSegments = false;
 
     const context = this.context;
     const urlUtils = URLUtils(context).getInstance();
