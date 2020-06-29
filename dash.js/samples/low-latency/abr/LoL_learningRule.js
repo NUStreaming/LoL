@@ -270,7 +270,7 @@ class LearningAbrController {
             }
             // QoE is very important if it is decreasing increase the weight!
             let QoEWeight = ( QoE < minAllowedQoE ) ? 1 : 0.4;
-            let weights=[ throughputWeight, 0.4, 0.1, 0.1, QoEWeight ]; // throughput, latency, buffer, playbackRate, QoE 
+            let weights=[ throughputWeight, 0.4, 0.1, 0.5, QoEWeight ]; // throughput, latency, buffer, playbackRate, QoE 
 
             // give 0 as the targetLatency to find the optimum neuron
             // targetQoE = 1
