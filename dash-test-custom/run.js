@@ -3,10 +3,10 @@ const puppeteer = require("puppeteer-core");
 const normalNetworkPatterns = require("./normal-network-patterns.js");
 const fastNetworkPatterns = require("./fast-network-patterns.js");
 const stats = require("./stats");
-const CHROME_PATH =
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const CHROME_PATH ="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+//const CHROME_PATH = "/opt/google/chrome/chrome";
 
-const {QoeEvaluator, QoeInfo} = require("../dash.js/samples/low-latency/abr/LoL_QoeEvaluator.js");
+const {QoeEvaluator, QoeInfo} = require("../dash.js/samples/low-latency/abr/LoL_qoeEvaluator.js");
 
 let patterns;
 if (process.env.npm_package_config_ffmpeg_profile === 'PROFILE_FAST') {
@@ -196,6 +196,8 @@ sleep(waitSeconds * 1000).then(() => {
     const context = await browser.createIncognitoBrowserContext();
     // Create a new page in a pristine context.
     const page = await context.newPage();
+    //test mode setuser agent to puppeteer
+    page.setUserAgent("puppeteer");
 
     await page.goto("http://localhost:3000/samples/low-latency-custom/index.html");
     const cdpClient = await page.target().createCDPSession();
