@@ -4,6 +4,7 @@ This repo contains assets for LoL based on Twitch's ACM MMSys 2020 Grand Challen
 
 # Cite These Papers
 - Bentaleb, A.,  Akcay, M. N., Lim, M., Begen, A. C., & Zimmermann, R. (2020, Sept). Catching the Moment with LoL^+ in Twitch-LikeLow-Latency Live Streaming Platforms (to appear).
+  - GitHub repository: [LoL^+](https://github.com/NUStreaming/LoL-plus)
 - Lim, M., Akcay, M. N., Bentaleb, A., Begen, A. C., & Zimmermann, R. (2020, May). When they go high, we go low: low-latency live streaming in dash. js with LoL. In Proceedings of the 11th ACM Multimedia Systems Conference (pp. 321-326).
 
 
